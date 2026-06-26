@@ -385,10 +385,12 @@ elif page == "🔮 Risk Predictor":
         slope_val   = int(slope.split("(")[1][0])
         thal_val    = int(thal.split("(")[1][0])
 
+        ca_val = int(ca)
+
         # Build raw input
         raw = pd.DataFrame([[age, sex_val, cp_val, trestbps, chol,
                              fbs_val, restecg_val, thalach, exang_val,
-                             oldpeak, slope_val, ca, thal_val]],
+                             oldpeak, slope_val, ca_val, thal_val]],
                            columns=["age","sex","cp","trestbps","chol","fbs",
                                     "restecg","thalach","exang","oldpeak",
                                     "slope","ca","thal"])
