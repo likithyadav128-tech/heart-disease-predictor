@@ -248,10 +248,6 @@ elif page == "📊 EDA & Insights":
     titles = ["Age", "Max Heart Rate", "ST Depression (oldpeak)"]
     for ax, feat, title in zip(axes, feats, titles):
         ax.set_facecolor('#1a1d2e')
-        ax.boxplot([df[df["target"]==0][feat], df[df["target"]==1][feat]],
-                   patch_artist=True,
-                   boxprops=dict(facecolor="#1a1d2e"),
-                   medianprops=dict(color="#e74c3c", linewidth=2))
         data_no  = df[df["target"]==0][feat]
         data_yes = df[df["target"]==1][feat]
         ax.boxplot([data_no, data_yes], patch_artist=True,
@@ -260,6 +256,7 @@ elif page == "📊 EDA & Insights":
                    whiskerprops=dict(color="#8b9cb3"),
                    capprops=dict(color="#8b9cb3"),
                    flierprops=dict(markerfacecolor="#e74c3c", marker='o'))
+        ax.set_xticks([1, 2])
         ax.set_xticklabels(["No Disease", "Disease"], color="#8b9cb3")
         ax.set_title(title, color="white")
         ax.tick_params(colors="#8b9cb3")
