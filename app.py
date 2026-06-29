@@ -384,26 +384,32 @@ elif page == "🔮 Risk Predictor":
         exang_val   = int(exang.split("(")[1][0])
         slope_val   = int(slope.split("(")[1][0])
         thal_val    = int(thal.split("(")[1][0])
+        ca_val      = int(ca)
 
-        ca_val = int(ca)
+        # Build input using exact training column names (format: col_value.0)
+        raw_enc = pd.DataFrame(0.0, index=[0], columns=X_train.columns)
 
-        # Build raw input
-        raw = pd.DataFrame([[age, sex_val, cp_val, trestbps, chol,
-                             fbs_val, restecg_val, thalach, exang_val,
-                             oldpeak, slope_val, ca_val, thal_val]],
-                           columns=["age","sex","cp","trestbps","chol","fbs",
-                                    "restecg","thalach","exang","oldpeak",
-                                    "slope","ca","thal"])
+        # Numerical columns
+        raw_enc["age"]      = float(age)
+        raw_enc["trestbps"] = float(trestbps)
+        raw_enc["chol"]     = float(chol)
+        raw_enc["thalach"]  = float(thalach)
+        raw_enc["oldpeak"]  = float(oldpeak)
 
-        # One-hot encode exactly like training
-        cat_cols = ["sex","cp","fbs","restecg","exang","slope","ca","thal"]
-        raw_enc  = pd.get_dummies(raw, columns=cat_cols)
+        # One-hot columns - training uses format like "sex_1.0", "cp_4.0"
+        def set_col(prefix, val):
+            col = f"{prefix}_{float(val)}"
+            if col in raw_enc.columns:
+                raw_enc[col] = 1.0
 
-        # Align with training columns
-        for col in X_train.columns:
-            if col not in raw_enc.columns:
-                raw_enc[col] = 0
-        raw_enc = raw_enc[X_train.columns]
+        set_col("sex",     sex_val)
+        set_col("cp",      cp_val)
+        set_col("fbs",     fbs_val)
+        set_col("restecg", restecg_val)
+        set_col("exang",   exang_val)
+        set_col("slope",   slope_val)
+        set_col("ca",      ca_val)
+        set_col("thal",    thal_val)
 
         # Scale numerical
         num_cols = ["age","trestbps","chol","thalach","oldpeak"]
