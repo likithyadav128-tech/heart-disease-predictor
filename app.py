@@ -747,7 +747,7 @@ elif "Risk" in page:
             ax.text(0, 0.05, f"{risk_pct:.1f}%", ha="center", va="center",
                     fontsize=26, fontweight="900", color=fill_color)
             ax.text(0, -0.28, "RISK SCORE", ha="center", color=PALETTE["muted"],
-                    fontsize=8, fontweight="700", letter_spacing=0.15 if False else None)
+                    fontsize=8, fontweight="700")
             ax.text(-0.95, -0.08, "0%",  ha="center", color=PALETTE["muted"], fontsize=8)
             ax.text( 0.95, -0.08, "100%",ha="center", color=PALETTE["muted"], fontsize=8)
             ax.set_xlim(-1.3,1.3); ax.set_ylim(-0.5,1.25)
