@@ -49,20 +49,19 @@ html{scroll-behavior:smooth}
 body,html,[class*="css"]{font-family:'Inter',sans-serif!important;-webkit-font-smoothing:antialiased}
 
 /* ── CURSOR ── */
-*{cursor:none!important}
-#custom-cursor{
-  position:fixed;width:12px;height:12px;background:var(--red);
-  border-radius:50%;pointer-events:none;z-index:99999;
-  transform:translate(-50%,-50%);transition:width .2s,height .2s,opacity .2s;
-  mix-blend-mode:normal;box-shadow:0 0 20px var(--red-glow);
+#hs-dot{
+  position:fixed;width:10px;height:10px;background:#e11d48;border-radius:50%;
+  pointer-events:none;z-index:2147483647;top:0;left:0;
+  box-shadow:0 0 14px rgba(225,29,72,0.9),0 0 28px rgba(225,29,72,0.4);
+  transition:width .18s,height .18s,background .18s,transform .1s;
+  will-change:transform;
 }
-#cursor-ring{
-  position:fixed;width:36px;height:36px;border:1.5px solid rgba(225,29,72,0.5);
-  border-radius:50%;pointer-events:none;z-index:99998;
-  transform:translate(-50%,-50%);transition:all .12s ease-out;
+#hs-ring{
+  position:fixed;width:34px;height:34px;border:1.5px solid rgba(225,29,72,0.5);
+  border-radius:50%;pointer-events:none;z-index:2147483646;top:0;left:0;
+  transition:width .22s,height .22s,border-color .22s;
+  will-change:transform;
 }
-body:has(button:hover) #custom-cursor,
-body:has(a:hover) #custom-cursor{width:20px;height:20px}
 
 /* ── SCROLLBAR ── */
 ::-webkit-scrollbar{width:4px}
@@ -456,53 +455,73 @@ body:has(a:hover) #custom-cursor{width:20px;height:20px}
 }
 </style>
 
-<!-- CURSOR & FLOATING ORBS -->
-<div id="custom-cursor"></div>
-<div id="cursor-ring"></div>
+<!-- ORBS -->
 <div class="orb orb1"></div>
 <div class="orb orb2"></div>
 <div class="orb orb3"></div>
 
 <script>
-(function(){
-  const cur=document.getElementById('custom-cursor');
-  const ring=document.getElementById('cursor-ring');
-  let mx=0,my=0,rx=0,ry=0;
-  document.addEventListener('mousemove',e=>{
-    mx=e.clientX;my=e.clientY;
-    cur.style.left=mx+'px';cur.style.top=my+'px';
-  });
-  function animRing(){
-    rx+=(mx-rx)*0.14;ry+=(my-ry)*0.14;
-    ring.style.left=rx+'px';ring.style.top=ry+'px';
-    requestAnimationFrame(animRing);
+(function boot(){
+  if(!document.body){ setTimeout(boot,60); return; }
+
+  /* ── CREATE CURSOR ELEMENTS ── */
+  function mkEl(id,extra){
+    let el=document.getElementById(id);
+    if(!el){ el=document.createElement('div'); el.id=id; document.body.appendChild(el); }
+    return el;
   }
-  animRing();
-  /* counter animation */
-  function animCounter(el,target,suffix='',decimals=0){
-    let start=0,duration=1400,startTime=null;
-    function step(ts){
-      if(!startTime)startTime=ts;
-      let prog=Math.min((ts-startTime)/duration,1);
-      let ease=1-Math.pow(1-prog,4);
-      let val=start+(target-start)*ease;
-      el.textContent=(decimals?val.toFixed(decimals):Math.round(val))+suffix;
-      if(prog<1)requestAnimationFrame(step);
-    }
-    requestAnimationFrame(step);
+  const dot  = mkEl('hs-dot');
+  const ring = mkEl('hs-ring');
+
+  let mx=0, my=0, rx=0, ry=0;
+
+  /* ── TRACK MOUSE ── */
+  document.addEventListener('mousemove', function(e){
+    mx=e.clientX; my=e.clientY;
+    dot.style.transform = 'translate('+(mx-5)+'px,'+(my-5)+'px)';
+  }, {passive:true});
+
+  /* ── SMOOTH RING ── */
+  (function loop(){
+    rx += (mx-rx)*0.13;
+    ry += (my-ry)*0.13;
+    ring.style.transform = 'translate('+(rx-17)+'px,'+(ry-17)+'px)';
+    requestAnimationFrame(loop);
+  })();
+
+  /* ── HOVER EXPAND ── */
+  function big(){
+    dot.style.width='18px'; dot.style.height='18px';
+    dot.style.background='rgba(225,29,72,0.65)';
+    ring.style.width='50px'; ring.style.height='50px';
+    ring.style.borderColor='rgba(225,29,72,0.85)';
   }
-  const obs=new IntersectionObserver(entries=>{
-    entries.forEach(e=>{
-      if(e.isIntersecting){
-        const t=parseFloat(e.target.dataset.target||0);
-        const s=e.target.dataset.suffix||'';
-        const d=parseInt(e.target.dataset.dec||0);
-        animCounter(e.target,t,s,d);
-        obs.unobserve(e.target);
-      }
+  function small(){
+    dot.style.width='10px'; dot.style.height='10px';
+    dot.style.background='#e11d48';
+    ring.style.width='34px'; ring.style.height='34px';
+    ring.style.borderColor='rgba(225,29,72,0.5)';
+  }
+
+  function attach(){
+    var sel='button,a,select,input,[role="button"],.stat-card,.gc,.pip,.fin,.nav-item';
+    document.querySelectorAll(sel).forEach(function(el){
+      if(el._hsOk) return; el._hsOk=true;
+      el.addEventListener('mouseenter', big);
+      el.addEventListener('mouseleave', small);
     });
-  },{threshold:0.5});
-  document.querySelectorAll('[data-target]').forEach(el=>obs.observe(el));
+  }
+  attach();
+  new MutationObserver(attach).observe(document.body,{childList:true,subtree:true});
+
+  /* ── CLICK SQUISH ── */
+  document.addEventListener('mousedown', function(){
+    dot.style.transform='translate('+(mx-5)+'px,'+(my-5)+'px) scale(0.65)';
+  });
+  document.addEventListener('mouseup', function(){
+    dot.style.transform='translate('+(mx-5)+'px,'+(my-5)+'px) scale(1)';
+  });
+
 })();
 </script>
 """, unsafe_allow_html=True)
