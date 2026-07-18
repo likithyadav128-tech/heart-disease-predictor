@@ -832,8 +832,11 @@ elif "Risk" in page:
         st.markdown('<div class="ig">Demographics & symptoms</div>',unsafe_allow_html=True)
         age=st.slider("Age",20,80,55)
         sex=st.selectbox("Sex",["Female (F)","Male (M)"])
-        cp=st.selectbox("Chest pain type",["ATA - Atypical Angina","NAP - Non-Anginal Pain",
-                                            "ASY - Asymptomatic","TA - Typical Angina"])
+        cp=st.selectbox("Chest pain type",[
+            "ASY - Asymptomatic (most common high risk)",
+            "ATA - Atypical Angina",
+            "NAP - Non-Anginal Pain",
+            "TA - Typical Angina"])
         trestbps=st.slider("Resting blood pressure (mm Hg)",80,200,130)
         chol=st.slider("Cholesterol (mg/dl)",100,600,200)
         fbs=st.selectbox("Fasting blood sugar > 120 mg/dl",["No (0)","Yes (1)"])
@@ -851,30 +854,39 @@ elif "Risk" in page:
         btn=st.button("🔮  Analyse patient risk")
 
         if btn:
-            # Parse new dataset values
-            sex_val  = "M" if "Male" in sex else "F"
-            cp_val   = cp.split(" - ")[0] if " - " in cp else cp.split(" ")[0]
-            fbs_val  = int(fbs.split("(")[1][0])
-            ecg_val  = restecg.split(" - ")[0] if " - " in restecg else restecg.split(" ")[0]
-            exang_val= "Y" if "Yes" in exang else "N"
-            slope_val= slope.split(" - ")[0] if " - " in slope else slope.split(" ")[0]
+            # Parse inputs → match exact training column names
+            sex_val   = "M" if "Male" in sex else "F"
+            cp_val    = cp.split(" - ")[0].strip()   # ASY / ATA / NAP / TA
+            fbs_val   = int(fbs.split("(")[1][0])
+            ecg_val   = restecg.split(" - ")[0].strip()  # Normal / LVH / ST
+            exang_val = "Y" if "Yes" in exang else "N"
+            slope_val = slope.split(" - ")[0].strip()  # Up / Flat / Down
 
-            enc=pd.DataFrame(0.0,index=[0],columns=Xtr.columns)
-            enc["Age"]=float(age); enc["RestingBP"]=float(trestbps)
-            enc["Cholesterol"]=float(chol); enc["FastingBS"]=float(fbs_val)
-            enc["MaxHR"]=float(thalach); enc["Oldpeak"]=float(oldpeak)
+            # Build dataframe with ALL training columns set to 0
+            enc = pd.DataFrame(0.0, index=[0], columns=Xtr.columns)
 
-            def sc2(col):
-                if col in enc.columns: enc[col]=1.0
+            # Fill numerical features
+            enc["Age"]        = float(age)
+            enc["RestingBP"]  = float(trestbps)
+            enc["Cholesterol"]= float(chol)
+            enc["FastingBS"]  = float(fbs_val)
+            enc["MaxHR"]      = float(thalach)
+            enc["Oldpeak"]    = float(oldpeak)
 
-            sc2(f"Sex_{sex_val}")
-            sc2(f"ChestPainType_{cp_val}")
-            sc2(f"RestingECG_{ecg_val}")
-            sc2(f"ExerciseAngina_{exang_val}")
-            sc2(f"ST_Slope_{slope_val}")
+            # Fill one-hot encoded columns
+            def set_ohe(col):
+                if col in enc.columns:
+                    enc[col] = 1.0
 
-            num_cols=["Age","RestingBP","Cholesterol","FastingBS","MaxHR","Oldpeak"]
-            enc[num_cols]=scaler.transform(enc[num_cols])
+            set_ohe(f"Sex_{sex_val}")
+            set_ohe(f"ChestPainType_{cp_val}")
+            set_ohe(f"RestingECG_{ecg_val}")
+            set_ohe(f"ExerciseAngina_{exang_val}")
+            set_ohe(f"ST_Slope_{slope_val}")
+
+            # Scale using SAME scaler fitted on training data
+            num_cols = ["Age","RestingBP","Cholesterol","FastingBS","MaxHR","Oldpeak"]
+            enc[num_cols] = scaler.transform(enc[num_cols])
 
             pred=sel_mdl.predict(enc)[0]
             prob=sel_mdl.predict_proba(enc)[0][1]
