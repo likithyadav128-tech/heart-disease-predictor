@@ -571,10 +571,10 @@ with st.sidebar:
 
     st.markdown("""
     <div class="sb-stats">
-      <div class="sb-stat-row">Patients<span class="sb-stat-val">303</span></div>
-      <div class="sb-stat-row">Features<span class="sb-stat-val">13</span></div>
-      <div class="sb-stat-row">Best AUC<span class="sb-stat-val">0.962</span></div>
-      <div class="sb-stat-row">Best Acc.<span class="sb-stat-val">88.5%</span></div>
+      <div class="sb-stat-row">Patients<span class="sb-stat-val">918</span></div>
+      <div class="sb-stat-row">Features<span class="sb-stat-val">11</span></div>
+      <div class="sb-stat-row">Best AUC<span class="sb-stat-val">0.933</span></div>
+      <div class="sb-stat-row">Best Acc.<span class="sb-stat-val">88.6%</span></div>
       <div class="sb-stat-row">Models<span class="sb-stat-val">3</span></div>
       <div class="sb-stat-row">Dataset<span class="sb-stat-val">UCI</span></div>
     </div>""", unsafe_allow_html=True)
@@ -604,26 +604,26 @@ if "Overview" in page:
     st.markdown("""
     <div class="stat-grid">
       <div class="stat-card"><span class="sc-icon">📈</span>
-        <div class="sc-num red" data-target="0.962" data-suffix="" data-dec="3">0.962</div>
+        <div class="sc-num red" data-target="0.933" data-suffix="" data-dec="3">0.933</div>
         <div class="sc-lbl">Best ROC-AUC score</div></div>
       <div class="stat-card"><span class="sc-icon">🎯</span>
-        <div class="sc-num w" data-target="88.5" data-suffix="%" data-dec="1">88.5%</div>
+        <div class="sc-num w" data-target="88.6" data-suffix="%" data-dec="1">88.6%</div>
         <div class="sc-lbl">Top model accuracy</div></div>
       <div class="stat-card"><span class="sc-icon">🤖</span>
         <div class="sc-num red" data-target="3" data-suffix="" data-dec="0">3</div>
         <div class="sc-lbl">ML models compared</div></div>
       <div class="stat-card"><span class="sc-icon">🏥</span>
-        <div class="sc-num w" data-target="303" data-suffix="" data-dec="0">303</div>
+        <div class="sc-num w" data-target="918" data-suffix="" data-dec="0">918</div>
         <div class="sc-lbl">Patient records</div></div>
     </div>""", unsafe_allow_html=True)
 
     c1,c2=st.columns([1.05,0.95],gap="large")
     with c1:
         st.markdown('<div class="sl">Project pipeline</div>',unsafe_allow_html=True)
-        steps=[("01","Data collection","UCI Heart Disease Dataset — Cleveland, 303 patients, 13 features"),
+        steps=[("01","Data collection","fedesoriano Dataset — 5 UCI sources combined, 918 patients, 11 features"),
                ("02","Exploratory analysis","Distributions, correlations, feature-vs-outcome patterns"),
                ("03","Data cleaning","Median imputation for missing '?' values, duplicate removal"),
-               ("04","Preprocessing","One-hot encoding × 8 cols, StandardScaler × 5 cols, 80/20 split"),
+               ("04","Preprocessing","One-hot encoding × 5 cols, StandardScaler × 6 cols, 80/20 split"),
                ("05","Model training","Logistic Regression · Random Forest (n=100) · Gradient Boosting"),
                ("06","Evaluation","Accuracy · Precision · Recall · F1-Score · ROC-AUC · Confusion Matrix"),
                ("07","Deployment","Streamlit Cloud — 4-page interactive web app, live predictions")]
@@ -634,14 +634,14 @@ if "Overview" in page:
 
     with c2:
         st.markdown('<div class="sl">Key findings</div>',unsafe_allow_html=True)
-        finds=[("#e11d48","thal_7.0 (reversible thalassemia defect) is the strongest predictor across all three models"),
-               ("#e11d48","Asymptomatic chest pain (cp=4) strongly correlates with heart disease presence"),
+        finds=[("#e11d48","ST_Slope_Up (upward ST slope) is the strongest predictor — highest importance in all models"),
+               ("#e11d48","Asymptomatic chest pain (ChestPainType_ASY) strongly correlates with heart disease"),
                ("#10b981","Higher max heart rate (thalach) significantly reduces disease probability"),
                ("#e11d48","Male patients show substantially higher disease rates than female patients"),
-               ("#e11d48","ST depression >2.0 (oldpeak) is a reliable high-risk clinical indicator"),
-               ("#3b82f6","Logistic Regression leads with best ROC-AUC of 0.962 on the test set"),
-               ("#3b82f6","Random Forest achieves best raw accuracy at 88.5% (28+26 correct)"),
-               ("#10b981","All 3 models exceed 85% accuracy — strong generalisation on unseen data")]
+               ("#e11d48","Oldpeak (ST depression) is a top-5 predictor — higher values strongly signal disease"),
+               ("#3b82f6","Logistic Regression leads with best ROC-AUC of 0.933 on the test set"),
+               ("#3b82f6","Logistic Regression achieves best raw accuracy at 88.6% on 918-patient dataset"),
+               ("#10b981","All 3 models exceed 85% accuracy — significantly better than old 303-patient dataset")]
         for col,txt in finds:
             st.markdown(f'<div class="fin"><div class="dot" style="background:{col}"></div>{txt}</div>',
                         unsafe_allow_html=True)
@@ -651,13 +651,13 @@ if "Overview" in page:
           <div class="lb-sub"><span>Model</span><span>AUC</span><span>Accuracy</span></div>
           <div class="lb-row">
             <span class="lb-name">🥇 Logistic Regression</span>
-            <span class="lb-auc">0.962</span><span class="lb-acc">86.9%</span></div>
+            <span class="lb-auc">0.933</span><span class="lb-acc">88.6%</span></div>
           <div class="lb-row lb-dim" style="opacity:0.7">
             <span class="lb-name">🥈 Random Forest</span>
-            <span style="color:#94a3b8">0.951</span><span class="lb-acc">88.5%</span></div>
+            <span style="color:#94a3b8">0.929</span><span class="lb-acc">88.0%</span></div>
           <div class="lb-row lb-dim" style="opacity:0.5">
             <span class="lb-name">🥉 Gradient Boosting</span>
-            <span style="color:#94a3b8">0.932</span><span style="color:#94a3b8">86.9%</span></div>
+            <span style="color:#94a3b8">0.920</span><span style="color:#94a3b8">85.9%</span></div>
         </div>""", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════
@@ -818,11 +818,11 @@ elif "Risk" in page:
     st.markdown('<h2 class="st">Patient risk assessment</h2>',unsafe_allow_html=True)
 
     mdl_choice=st.selectbox("Prediction model",[
-        "🔴  Logistic Regression  ·  Best AUC 0.962",
-        "🟢  Random Forest  ·  Best Accuracy 88.5%",
+        "🔴  Logistic Regression  ·  Best AUC 0.933",
+        "🟢  Random Forest  ·  Accuracy 88.0%",
         "🔵  Gradient Boosting  ·  AUC 0.932"])
-    sel_mdl={"🔴  Logistic Regression  ·  Best AUC 0.962":lr,
-              "🟢  Random Forest  ·  Best Accuracy 88.5%":rf,
+    sel_mdl={"🔴  Logistic Regression  ·  Best AUC 0.933":lr,
+              "🟢  Random Forest  ·  Accuracy 88.0%":rf,
               "🔵  Gradient Boosting  ·  AUC 0.932":gb}[mdl_choice]
 
     st.markdown("<div style='height:0.5rem'></div>",unsafe_allow_html=True)
@@ -831,47 +831,50 @@ elif "Risk" in page:
     with ca:
         st.markdown('<div class="ig">Demographics & symptoms</div>',unsafe_allow_html=True)
         age=st.slider("Age",20,80,55)
-        sex=st.selectbox("Sex",["Female (0)","Male (1)"])
-        cp=st.selectbox("Chest pain type",["Typical angina (1)","Atypical angina (2)",
-                                            "Non-anginal pain (3)","Asymptomatic (4)"])
+        sex=st.selectbox("Sex",["Female (F)","Male (M)"])
+        cp=st.selectbox("Chest pain type",["ATA - Atypical Angina","NAP - Non-Anginal Pain",
+                                            "ASY - Asymptomatic","TA - Typical Angina"])
         trestbps=st.slider("Resting blood pressure (mm Hg)",80,200,130)
-        chol=st.slider("Cholesterol (mg/dl)",100,600,245)
-        fbs=st.selectbox("Fasting blood sugar > 120",["No (0)","Yes (1)"])
+        chol=st.slider("Cholesterol (mg/dl)",100,600,200)
+        fbs=st.selectbox("Fasting blood sugar > 120 mg/dl",["No (0)","Yes (1)"])
 
     with cb:
         st.markdown('<div class="ig">Cardiac measurements</div>',unsafe_allow_html=True)
-        restecg=st.selectbox("Resting ECG",["Normal (0)","ST-T abnormality (1)","LV hypertrophy (2)"])
-        thalach=st.slider("Max heart rate",60,210,150)
-        exang=st.selectbox("Exercise induced angina",["No (0)","Yes (1)"])
-        oldpeak=st.slider("ST depression (oldpeak)",0.0,6.0,1.0,0.1)
-        slope=st.selectbox("Slope of ST segment",["Upsloping (1)","Flat (2)","Downsloping (3)"])
-        ca2=st.selectbox("Major vessels coloured (0–3)",[0,1,2,3])
-        thal=st.selectbox("Thalassemia",["Normal (3)","Fixed defect (6)","Reversible defect (7)"])
+        restecg=st.selectbox("Resting ECG",["Normal","LVH - Left Ventricular Hypertrophy","ST - ST-T Wave Abnormality"])
+        thalach=st.slider("Max heart rate achieved",60,202,140)
+        exang=st.selectbox("Exercise induced angina",["No (N)","Yes (Y)"])
+        oldpeak=st.slider("Oldpeak (ST depression)",-2.6,6.2,0.0,0.1)
+        slope=st.selectbox("ST slope",["Up - Upsloping","Flat","Down - Downsloping"])
 
     with cc:
         st.markdown('<div class="ig" style="margin-top:0">Result</div>',unsafe_allow_html=True)
         btn=st.button("🔮  Analyse patient risk")
 
         if btn:
-            sv=int(sex.split("(")[1][0]); cpv=int(cp.split("(")[1][0])
-            fbv=int(fbs.split("(")[1][0]); rev=int(restecg.split("(")[1][0])
-            exv=int(exang.split("(")[1][0]); slv=int(slope.split("(")[1][0])
-            thv=int(thal.split("(")[1][0]); cav=int(ca2)
+            # Parse new dataset values
+            sex_val  = "M" if "Male" in sex else "F"
+            cp_val   = cp.split(" - ")[0] if " - " in cp else cp.split(" ")[0]
+            fbs_val  = int(fbs.split("(")[1][0])
+            ecg_val  = restecg.split(" - ")[0] if " - " in restecg else restecg.split(" ")[0]
+            exang_val= "Y" if "Yes" in exang else "N"
+            slope_val= slope.split(" - ")[0] if " - " in slope else slope.split(" ")[0]
 
             enc=pd.DataFrame(0.0,index=[0],columns=Xtr.columns)
-            enc["age"]=float(age); enc["trestbps"]=float(trestbps)
-            enc["chol"]=float(chol); enc["thalach"]=float(thalach)
-            enc["oldpeak"]=float(oldpeak)
+            enc["Age"]=float(age); enc["RestingBP"]=float(trestbps)
+            enc["Cholesterol"]=float(chol); enc["FastingBS"]=float(fbs_val)
+            enc["MaxHR"]=float(thalach); enc["Oldpeak"]=float(oldpeak)
 
-            def sc2(p,v):
-                c=f"{p}_{float(v)}"
-                if c in enc.columns: enc[c]=1.0
+            def sc2(col):
+                if col in enc.columns: enc[col]=1.0
 
-            for p,v in[("sex",sv),("cp",cpv),("fbs",fbv),("restecg",rev),
-                        ("exang",exv),("slope",slv),("ca",cav),("thal",thv)]: sc2(p,v)
+            sc2(f"Sex_{sex_val}")
+            sc2(f"ChestPainType_{cp_val}")
+            sc2(f"RestingECG_{ecg_val}")
+            sc2(f"ExerciseAngina_{exang_val}")
+            sc2(f"ST_Slope_{slope_val}")
 
-            enc[["age","trestbps","chol","thalach","oldpeak"]]=\
-                scaler.transform(enc[["age","trestbps","chol","thalach","oldpeak"]])
+            num_cols=["Age","RestingBP","Cholesterol","FastingBS","MaxHR","Oldpeak"]
+            enc[num_cols]=scaler.transform(enc[num_cols])
 
             pred=sel_mdl.predict(enc)[0]
             prob=sel_mdl.predict_proba(enc)[0][1]

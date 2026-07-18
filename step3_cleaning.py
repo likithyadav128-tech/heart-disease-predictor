@@ -1,98 +1,40 @@
 # ============================================================
-# HEART DISEASE RISK PREDICTION
 # Step 3: Data Cleaning
 # ============================================================
-
 import pandas as pd
 import numpy as np
 
-# Load dataset
 df = pd.read_csv("data/heart.csv")
-
-print("=" * 55)
+print("=" * 60)
 print("            DATA CLEANING")
-print("=" * 55)
-
+print("=" * 60)
 print(f"\n📋 Original shape: {df.shape}")
+print(f"\n❓ Missing values:\n{df.isnull().sum()}")
 
-# ── 1. Check for '?' missing values (UCI dataset style) ────
-print("\n🔍 Checking for '?' values (UCI-style missing data)...")
-question_mark_counts = {}
-for col in df.columns:
-    count = (df[col].astype(str) == '?').sum()
-    if count > 0:
-        question_mark_counts[col] = count
-        print(f"   ⚠️  Column '{col}': {count} missing values ('?')")
+# Fix Cholesterol = 0 (medically impossible)
+chol_zero = (df['Cholesterol'] == 0).sum()
+print(f"\n⚠️  Cholesterol = 0: {chol_zero} rows — replacing with median")
+median_chol = df[df['Cholesterol'] > 0]['Cholesterol'].median()
+df['Cholesterol'] = df['Cholesterol'].where(df['Cholesterol'] > 0, median_chol)
+print(f"   ✅ Replaced with median: {median_chol}")
 
-if not question_mark_counts:
-    print("   ✅ No '?' values found!")
+# Fix RestingBP = 0
+bp_zero = (df['RestingBP'] == 0).sum()
+if bp_zero > 0:
+    print(f"\n⚠️  RestingBP = 0: {bp_zero} rows — replacing with median")
+    median_bp = df[df['RestingBP'] > 0]['RestingBP'].median()
+    df['RestingBP'] = df['RestingBP'].where(df['RestingBP'] > 0, median_bp)
+    print(f"   ✅ Replaced with median: {median_bp}")
 
-# ── 2. Replace '?' with NaN ────────────────────────────────
-df.replace('?', np.nan, inplace=True)
+# Duplicates
+dupes = df.duplicated().sum()
+print(f"\n🔍 Duplicates found: {dupes}")
+if dupes > 0:
+    df = df.drop_duplicates()
 
-# Convert all columns to numeric
-for col in df.columns:
-    df[col] = pd.to_numeric(df[col], errors='coerce')
+print(f"\n✅ Final NaN count: {df.isnull().sum().sum()}")
+print(f"📋 Final shape: {df.shape}")
 
-print(f"\n🔍 NaN values after replacing '?':")
-print(df.isnull().sum())
-
-# ── 3. Handle Missing Values ───────────────────────────────
-print("\n🛠️  Handling missing values with median imputation...")
-missing_before = df.isnull().sum().sum()
-
-for col in df.columns:
-    if df[col].isnull().sum() > 0:
-        median_val = df[col].median()
-        df[col].fillna(median_val, inplace=True)
-        print(f"   ✅ '{col}': filled {df[col].isnull().sum()} NaN → median ({median_val})")
-
-missing_after = df.isnull().sum().sum()
-print(f"\n   Missing values before: {missing_before}")
-print(f"   Missing values after:  {missing_after}")
-
-# ── 4. Check & Remove Duplicates ───────────────────────────
-print(f"\n🔍 Checking for duplicate rows...")
-duplicates = df.duplicated().sum()
-print(f"   Duplicate rows found: {duplicates}")
-
-if duplicates > 0:
-    df.drop_duplicates(inplace=True)
-    print(f"   ✅ Duplicates removed. New shape: {df.shape}")
-else:
-    print("   ✅ No duplicates found!")
-
-# ── 5. Check Data Types ────────────────────────────────────
-print("\n🔍 Data types after cleaning:")
-print(df.dtypes)
-
-# ── 6. Check Value Ranges ──────────────────────────────────
-print("\n🔍 Checking value ranges for anomalies...")
-
-checks = {
-    "age":      (20, 100),
-    "trestbps": (80, 220),
-    "chol":     (100, 600),
-    "thalach":  (60, 220),
-    "oldpeak":  (0, 10),
-}
-
-for col, (low, high) in checks.items():
-    out = df[(df[col] < low) | (df[col] > high)]
-    if len(out) > 0:
-        print(f"   ⚠️  '{col}': {len(out)} values outside [{low}, {high}]")
-    else:
-        print(f"   ✅ '{col}': all values in normal range [{low}, {high}]")
-
-# ── 7. Final Cleaned Dataset ───────────────────────────────
-print(f"\n📋 Final cleaned shape: {df.shape}")
-print("\n📋 Final dataset preview:")
-print(df.head())
-
-# Save cleaned dataset
 df.to_csv("data/heart_cleaned.csv", index=False)
-print("\n✅ Cleaned dataset saved to: data/heart_cleaned.csv")
-
-print("\n" + "=" * 55)
-print("✅ Step 3 Complete! Data is clean and ready.")
-print("=" * 55)
+print("✅ Saved: data/heart_cleaned.csv")
+print("✅ Step 3 Complete!")
