@@ -13,7 +13,7 @@ print("=" * 60)
 print("   BASELINE MODEL: LOGISTIC REGRESSION")
 print("=" * 60)
 
-lr = LogisticRegression(max_iter=1000, random_state=42)
+lr = LogisticRegression(max_iter=1000, random_state=42, C=1.0)
 lr.fit(X_train, y_train)
 y_pred = lr.predict(X_test)
 y_prob = lr.predict_proba(X_test)[:,1]
@@ -29,7 +29,6 @@ print(f"  F1 Score : {f1:.4f}")
 print(f"  ROC-AUC  : {auc:.4f}")
 print(f"\n{classification_report(y_test,y_pred,target_names=['No Disease','Disease'])}")
 
-# Confusion Matrix
 cm=confusion_matrix(y_test,y_pred)
 plt.figure(figsize=(6,5))
 sns.heatmap(cm,annot=True,fmt="d",cmap="Blues",
@@ -38,7 +37,6 @@ plt.title("Logistic Regression — Confusion Matrix")
 plt.ylabel("Actual"); plt.xlabel("Predicted")
 plt.tight_layout(); plt.savefig("plots/06_lr_confusion_matrix.png"); plt.show()
 
-# ROC Curve
 fpr,tpr,_=roc_curve(y_test,y_prob)
 plt.figure(figsize=(6,5))
 plt.plot(fpr,tpr,color="#e74c3c",lw=2,label=f"LR (AUC={auc:.3f})")

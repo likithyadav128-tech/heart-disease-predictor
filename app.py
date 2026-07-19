@@ -543,7 +543,7 @@ def load_data():
     res=pd.read_csv("models/results.csv")
     return df,Xtr,Xte,ytr,yte,res
 
-lr,rf,gb,scaler=load_models()
+lr,rf,gb,voting,scaler=load_models()
 df,Xtr,Xte,ytr,yte,res=load_data()
 
 P={"bg":"#03040a","card":"#0a0d18","red":"#e11d48","green":"#10b981",
@@ -640,7 +640,7 @@ if "Overview" in page:
                ("#e11d48","Male patients show substantially higher disease rates than female patients"),
                ("#e11d48","Oldpeak (ST depression) is a top-5 predictor — higher values strongly signal disease"),
                ("#3b82f6","Logistic Regression leads with best ROC-AUC of 0.933 on the test set"),
-               ("#3b82f6","Logistic Regression achieves best raw accuracy at 88.6% on 918-patient dataset"),
+               ("#8b5cf6","Voting Ensemble achieves best accuracy at 90.8%, combining 3 models strengths"),
                ("#10b981","All 3 models exceed 85% accuracy — significantly better than old 303-patient dataset")]
         for col,txt in finds:
             st.markdown(f'<div class="fin"><div class="dot" style="background:{col}"></div>{txt}</div>',
@@ -749,7 +749,7 @@ elif "Model" in page:
     with c1:
         st.markdown('<div class="chart-wrap">',unsafe_allow_html=True)
         fig,ax=dark_fig(5.5,4)
-        colors_m=[P["red"],P["green"],P["blue"]]
+        colors_m=[P["red"],P["green"],P["blue"],"#8b5cf6"][:len(res)]
         bars=ax.barh(res["Model"],(res["Accuracy"]*100).tolist(),
                      color=colors_m,height=0.42,edgecolor="none")
         for bar,v in zip(bars,(res["Accuracy"]*100).tolist()):
@@ -763,7 +763,7 @@ elif "Model" in page:
     with c2:
         st.markdown('<div class="chart-wrap">',unsafe_allow_html=True)
         fig,ax=dark_fig(5.5,4)
-        for model,name,color in[(lr,"Logistic Reg.",P["red"]),(rf,"Random Forest",P["green"]),(gb,"Grad. Boosting",P["blue"])]:
+        for model,name,color in[(lr,"Logistic Reg.",P["red"]),(rf,"Random Forest",P["green"]),(gb,"Grad. Boosting",P["blue"]),(voting,"Voting Ensemble","#8b5cf6")]:
             prob=model.predict_proba(Xte)[:,1]
             auc=roc_auc_score(yte,prob)
             fpr,tpr,_=roc_curve(yte,prob)
@@ -796,16 +796,16 @@ elif "Model" in page:
     with c4:
         st.markdown('<div class="chart-wrap">',unsafe_allow_html=True)
         fig,ax=dark_fig(5.5,5)
-        yp=rf.predict(Xte)
+        yp=voting.predict(Xte)
         cm=confusion_matrix(yte,yp)
         sns.heatmap(cm,annot=True,fmt="d",ax=ax,
-                    cmap=sns.light_palette("#e11d48",as_cmap=True),
+                    cmap=sns.light_palette("#8b5cf6",as_cmap=True),
                     linewidths=2,linecolor=P["bg"],
                     xticklabels=["No Disease","Disease"],
                     yticklabels=["No Disease","Disease"],
                     annot_kws={"size":16,"weight":"800","color":"#fff"})
         ax.set_xlabel("Predicted",color=P["t2"]); ax.set_ylabel("Actual",color=P["t2"])
-        ax.set_title("Confusion matrix — Random Forest",color="#e2e8f0",fontsize=10,fontweight="700",pad=10)
+        ax.set_title("Confusion matrix — Voting Ensemble",color="#e2e8f0",fontsize=10,fontweight="700",pad=10)
         ax.tick_params(colors=P["t2"],labelsize=9)
         fig.tight_layout(); st.pyplot(fig); plt.close()
         st.markdown('</div>',unsafe_allow_html=True)
