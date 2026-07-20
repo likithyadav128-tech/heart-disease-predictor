@@ -671,7 +671,7 @@ elif "Data" in page:
     with c1:
         st.markdown('<div class="chart-wrap">',unsafe_allow_html=True)
         fig,ax=dark_fig(5,3.6)
-        nd,hd=(df["target"]==0).sum(),(df["target"]==1).sum()
+        nd,hd=(df["HeartDisease"]==0).sum(),(df["HeartDisease"]==1).sum()
         bars=ax.bar(["No Disease","Disease"],[nd,hd],
                     color=[P["green"],P["red"]],width=0.45,edgecolor="none")
         for bar,v,c in zip(bars,[nd,hd],[P["green"],P["red"]]):
@@ -685,8 +685,8 @@ elif "Data" in page:
     with c2:
         st.markdown('<div class="chart-wrap">',unsafe_allow_html=True)
         fig,ax=dark_fig(5,3.6)
-        ax.hist(df[df["target"]==0]["age"],bins=20,alpha=0.8,color=P["green"],edgecolor="none",label="No disease")
-        ax.hist(df[df["target"]==1]["age"],bins=20,alpha=0.8,color=P["red"],edgecolor="none",label="Disease")
+        ax.hist(df[df["HeartDisease"]==0]["Age"],bins=20,alpha=0.8,color=P["green"],edgecolor="none",label="No disease")
+        ax.hist(df[df["HeartDisease"]==1]["Age"],bins=20,alpha=0.8,color=P["red"],edgecolor="none",label="Disease")
         ax.set_title("Age distribution by outcome",color="#e2e8f0",fontsize=11,fontweight="700",pad=10)
         ax.legend(facecolor=P["card"],edgecolor=P["border"],labelcolor="#94a3b8",fontsize=9)
         fig.tight_layout(); st.pyplot(fig); plt.close()
@@ -712,11 +712,11 @@ elif "Data" in page:
     fig,axes=plt.subplots(1,4,figsize=(13,4.2))
     fig.patch.set_facecolor(P["bg"])
     fig.suptitle("Clinical features — No disease vs Disease",color=P["t2"],fontsize=10,y=1.02)
-    for ax,feat,lbl in zip(axes,["age","thalach","oldpeak","chol"],
+    for ax,feat,lbl in zip(axes,["Age","MaxHR","Oldpeak","Cholesterol"],
                                  ["Age (years)","Max heart rate","ST depression","Cholesterol"]):
         ax.set_facecolor(P["card"])
         for s in ax.spines.values(): s.set_visible(False)
-        d0=df[df["target"]==0][feat]; d1=df[df["target"]==1][feat]
+        d0=df[df["HeartDisease"]==0][feat]; d1=df[df["HeartDisease"]==1][feat]
         vp=ax.violinplot([d0,d1],positions=[0,1],showmedians=True,showextrema=False)
         for body,c in zip(vp["bodies"],[P["green"],P["red"]]):
             body.set_facecolor(c); body.set_alpha(0.5); body.set_edgecolor("none")
