@@ -1,7 +1,9 @@
+# ============================================================
+# HEARTSENSE AI — ULTRA PREMIUM UI v4
+# ============================================================
 import streamlit as st, pandas as pd, numpy as np, pickle
 import matplotlib.pyplot as plt, seaborn as sns, warnings
 from sklearn.metrics import roc_curve, roc_auc_score, confusion_matrix
-from sklearn.ensemble import VotingClassifier
 import matplotlib.patches as mpatches
 warnings.filterwarnings('ignore')
 
@@ -26,7 +28,7 @@ st.markdown(r"""
   --card:     rgba(255,255,255,0.032);
   --card-h:   rgba(255,255,255,0.06);
   --border:   rgba(255,255,255,0.07);
-  --border-h:   rgba(225,29,72,0.35);
+  --border-h: rgba(225,29,72,0.35);
   --t1:       #ffffff;
   --t2:       rgba(255,255,255,0.65);
   --t3:       rgba(255,255,255,0.35);
@@ -541,14 +543,8 @@ def load_data():
     res=pd.read_csv("models/results.csv")
     return df,Xtr,Xte,ytr,yte,res
 
-lr,rf,gb,scaler=load_models()
+lr,rf,gb,voting,scaler=load_models()
 df,Xtr,Xte,ytr,yte,res=load_data()
-
-voting = VotingClassifier(
-    estimators=[("lr", lr), ("rf", rf), ("gb", gb)],
-    voting="soft"
-)
-voting.fit(Xtr, ytr)
 
 P={"bg":"#03040a","card":"#0a0d18","red":"#e11d48","green":"#10b981",
    "blue":"#3b82f6","purple":"#8b5cf6","border":"#13182a","t2":"#94a3b8","t3":"#4a5568"}
@@ -644,7 +640,7 @@ if "Overview" in page:
                ("#e11d48","Male patients show substantially higher disease rates than female patients"),
                ("#e11d48","Oldpeak (ST depression) is a top-5 predictor — higher values strongly signal disease"),
                ("#3b82f6","Logistic Regression leads with best ROC-AUC of 0.933 on the test set"),
-               ("#8b5cf6","Voting Ensemble achieves best accuracy at 90.8%, combining 3 models strengths"),
+               ("#8b5cf6","Voting Ensemble achieves best accuracy at 91.3% with weighted soft voting"),
                ("#10b981","All 3 models exceed 85% accuracy — significantly better than old 303-patient dataset")]
         for col,txt in finds:
             st.markdown(f'<div class="fin"><div class="dot" style="background:{col}"></div>{txt}</div>',
