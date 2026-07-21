@@ -532,8 +532,9 @@ def load_models():
     with open("models/logistic_regression.pkl","rb") as f: lr=pickle.load(f)
     with open("models/random_forest.pkl","rb") as f:       rf=pickle.load(f)
     with open("models/gradient_boosting.pkl","rb") as f:   gb=pickle.load(f)
+    with open("models/voting_ensemble.pkl","rb") as f:     voting=pickle.load(f)
     with open("models/scaler.pkl","rb") as f:              sc=pickle.load(f)
-    return lr,rf,gb,sc
+    return lr,rf,gb,voting,sc
 
 @st.cache_data
 def load_data():
