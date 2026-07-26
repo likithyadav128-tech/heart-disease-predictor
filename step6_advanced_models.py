@@ -1,6 +1,6 @@
 # ============================================================
-# Step 6: Advanced Models — GB, Extra Trees, KNN & Weighted
-#          Voting Ensemble (Best Accuracy, Compact Size)
+# Step 6: Advanced Models — GB, Extra Trees, KNN & Tuned
+#          Weighted Voting Ensemble (Best Accuracy, Compact)
 # ============================================================
 import pandas as pd, numpy as np, pickle, matplotlib.pyplot as plt, seaborn as sns
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, ExtraTreesClassifier, VotingClassifier
@@ -56,18 +56,18 @@ plt.title("Gradient Boosting — Confusion Matrix")
 plt.ylabel("Actual"); plt.xlabel("Predicted")
 plt.tight_layout(); plt.savefig("plots/09_gb_confusion_matrix.png"); plt.show()
 
-# ── Extra Trees (compact — max_depth capped for smaller file) ─
+# ── Extra Trees (compact) ───────────────────────────────────
 print("\n🌳 Training Extra Trees (compact)...")
 et=ExtraTreesClassifier(n_estimators=100,max_depth=8,random_state=42,n_jobs=-1)
 et.fit(X_train,y_train)
 et_pred,et_prob,et_acc,et_prec,et_rec,et_f1,et_auc=evaluate("EXTRA TREES (compact)",et)
 with open("models/extra_trees.pkl","wb") as f: pickle.dump(et,f)
 
-# ── K-Nearest Neighbors ─────────────────────────────────────
-print("\n🔵 Training K-Nearest Neighbors...")
-knn=KNeighborsClassifier(n_neighbors=15,weights='distance')
+# ── K-Nearest Neighbors (tuned k=19, cross-validated) ───────
+print("\n🔵 Training K-Nearest Neighbors (k=19)...")
+knn=KNeighborsClassifier(n_neighbors=19,weights='distance')
 knn.fit(X_train,y_train)
-knn_pred,knn_prob,knn_acc,knn_prec,knn_rec,knn_f1,knn_auc=evaluate("K-NEAREST NEIGHBORS",knn)
+knn_pred,knn_prob,knn_acc,knn_prec,knn_rec,knn_f1,knn_auc=evaluate("K-NEAREST NEIGHBORS (k=19)",knn)
 with open("models/knn.pkl","wb") as f: pickle.dump(knn,f)
 
 # ── Weighted Voting Ensemble (Best Model: GB + ET + KNN×2) ──
@@ -104,7 +104,7 @@ plt.legend(); plt.tight_layout()
 plt.savefig("plots/10_roc_comparison.png"); plt.show()
 
 results=pd.read_csv("models/results.csv")
-results = results[results["Model"]=="Logistic Regression"]  # keep only LR baseline
+results = results[results["Model"]=="Logistic Regression"]
 new_rows=pd.DataFrame({"Model":["Random Forest","Gradient Boosting","Extra Trees","KNN","Voting Ensemble"],
     "Accuracy":[round(rf_acc,4),round(gb_acc,4),round(et_acc,4),round(knn_acc,4),round(vt_acc,4)],
     "Precision":[round(rf_prec,4),round(gb_prec,4),round(et_prec,4),round(knn_prec,4),round(vt_prec,4)],

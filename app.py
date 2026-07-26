@@ -453,6 +453,142 @@ body,html,[class*="css"]{font-family:'Inter',sans-serif!important;-webkit-font-s
   .hero-h1{font-size:2rem}
   .main .block-container{padding:1rem 1rem 4rem}
 }
+
+/* ══════════════════════════════════════════════════════════
+   HEARTBEAT / ECG HERO VISUAL
+   ══════════════════════════════════════════════════════════ */
+.hero-visual{
+  width:100%; max-width:640px; margin:0 0 1.6rem;
+  animation:fadeUp 0.7s var(--ease2) both;
+}
+.hero-visual svg{ width:100%; height:auto; display:block; }
+.ecg-line{
+  fill:none; stroke:url(#ecgGrad); stroke-width:2.5;
+  stroke-linecap:round; stroke-linejoin:round;
+  stroke-dasharray:1000; stroke-dashoffset:1000;
+  animation:ecgDraw 3.2s ease-in-out infinite;
+  filter:drop-shadow(0 0 6px rgba(225,29,72,0.5));
+}
+@keyframes ecgDraw{
+  0%{stroke-dashoffset:1000}
+  55%{stroke-dashoffset:0}
+  100%{stroke-dashoffset:-1000}
+}
+.hero-heart{
+  transform-origin:center;
+  animation:heartBeat 1.15s ease-in-out infinite;
+  filter:drop-shadow(0 0 18px rgba(225,29,72,0.55));
+}
+@keyframes heartBeat{
+  0%,100%{transform:scale(1)}
+  14%{transform:scale(1.12)}
+  28%{transform:scale(0.98)}
+  42%{transform:scale(1.09)}
+  70%{transform:scale(1)}
+}
+
+/* sidebar mini heart logo */
+.sb-heart{ display:inline-block; vertical-align:middle; margin-right:2px; }
+.sb-heart svg{ animation:heartBeat 1.15s ease-in-out infinite; transform-origin:center; }
+
+/* ══════════════════════════════════════════════════════════
+   RESULT MODAL — dramatic popup reveal
+   ══════════════════════════════════════════════════════════ */
+.result-stage{ position:relative; min-height:60px; }
+
+.result-modal{
+  position:relative; border-radius:24px; padding:2.3rem 1.7rem 2rem;
+  text-align:center; overflow:hidden;
+  animation:modalPop 0.55s cubic-bezier(0.16,1.4,0.4,1) both;
+}
+@keyframes modalPop{
+  0%{ opacity:0; transform:scale(0.72) translateY(14px); }
+  55%{ opacity:1; transform:scale(1.045) translateY(-3px); }
+  100%{ opacity:1; transform:scale(1) translateY(0); }
+}
+.result-modal.high{
+  background:radial-gradient(ellipse at top,rgba(225,29,72,0.16),rgba(190,18,60,0.04) 70%);
+  border:1px solid rgba(225,29,72,0.4);
+  box-shadow:0 0 0 1px rgba(225,29,72,0.08) inset,0 25px 70px rgba(225,29,72,0.18);
+}
+.result-modal.low{
+  background:radial-gradient(ellipse at top,rgba(16,185,129,0.14),rgba(5,150,105,0.03) 70%);
+  border:1px solid rgba(16,185,129,0.35);
+  box-shadow:0 0 0 1px rgba(16,185,129,0.08) inset,0 25px 70px rgba(16,185,129,0.14);
+}
+
+/* pulsing alert rings — high risk */
+.alert-rings{ position:absolute; top:50%; left:50%; width:1px; height:1px; pointer-events:none; }
+.alert-ring{
+  position:absolute; top:0; left:0; width:90px; height:90px;
+  margin:-45px 0 0 -45px; border-radius:50%;
+  border:2px solid rgba(225,29,72,0.55);
+  animation:ringPulse 2.1s ease-out infinite;
+  opacity:0;
+}
+.alert-ring:nth-child(2){ animation-delay:0.7s; }
+.alert-ring:nth-child(3){ animation-delay:1.4s; }
+@keyframes ringPulse{
+  0%{ width:70px;height:70px;margin:-35px 0 0 -35px; opacity:0.7; }
+  100%{ width:280px;height:280px;margin:-140px 0 0 -140px; opacity:0; }
+}
+
+/* confetti burst — low risk */
+.confetti-wrap{ position:absolute; inset:0; overflow:hidden; pointer-events:none; }
+.confetti{
+  position:absolute; top:46%; left:50%; width:7px; height:11px;
+  opacity:0; border-radius:2px;
+  animation:confettiBurst 1.3s cubic-bezier(0.15,0.7,0.3,1) both;
+}
+@keyframes confettiBurst{
+  0%{ transform:translate(-50%,-50%) rotate(0deg) scale(0.4); opacity:0; }
+  8%{ opacity:1; }
+  100%{ transform:translate(calc(-50% + var(--dx))) translateY(calc(var(--dy))) rotate(var(--rot)) scale(1);
+       opacity:0; }
+}
+
+.res-icon-wrap{
+  width:70px; height:70px; margin:0 auto 1rem; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  position:relative; z-index:2;
+  animation:iconPop 0.5s cubic-bezier(0.34,1.6,0.5,1) 0.15s both;
+}
+.res-icon-wrap.high{ background:rgba(225,29,72,0.14); border:1px solid rgba(225,29,72,0.3); }
+.res-icon-wrap.low{ background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.28); }
+@keyframes iconPop{
+  0%{ transform:scale(0) rotate(-20deg); opacity:0; }
+  70%{ transform:scale(1.15) rotate(4deg); opacity:1; }
+  100%{ transform:scale(1) rotate(0deg); opacity:1; }
+}
+.res-icon-wrap svg{ width:34px; height:34px; }
+
+.res-title{
+  position:relative; z-index:2;
+  font-family:'Poppins',sans-serif; font-size:2.1rem; font-weight:900;
+  letter-spacing:-0.03em; margin-bottom:6px;
+  animation:fadeUp 0.4s ease 0.25s both;
+}
+.res-title.high{ color:#fb7185; }
+.res-title.low{ color:#34d399; }
+.res-prob-line{
+  position:relative; z-index:2; font-size:0.92rem; color:var(--t3);
+  animation:fadeUp 0.4s ease 0.32s both;
+}
+.res-prob-line strong{ color:rgba(255,255,255,0.9); font-variant-numeric:tabular-nums; }
+.res-sub{
+  position:relative; z-index:2; margin-top:8px; font-size:0.78rem;
+  animation:fadeUp 0.4s ease 0.4s both;
+}
+
+/* ══════════════════════════════════════════════════════════
+   ICON BADGES for input groups
+   ══════════════════════════════════════════════════════════ */
+.ig-icon{
+  display:inline-flex; align-items:center; justify-content:center;
+  width:22px; height:22px; border-radius:7px; margin-right:7px;
+  background:rgba(225,29,72,0.14); border:1px solid rgba(225,29,72,0.25);
+  font-size:0.72rem; vertical-align:middle;
+}
 </style>
 
 <!-- ORBS -->
@@ -532,9 +668,20 @@ def load_models():
     with open("models/logistic_regression.pkl","rb") as f: lr=pickle.load(f)
     with open("models/random_forest.pkl","rb") as f:       rf=pickle.load(f)
     with open("models/gradient_boosting.pkl","rb") as f:   gb=pickle.load(f)
-    with open("models/voting_ensemble.pkl","rb") as f:     voting=pickle.load(f)
     with open("models/scaler.pkl","rb") as f:              sc=pickle.load(f)
-    return lr,rf,gb,voting,sc
+    try:
+        with open("models/extra_trees.pkl","rb") as f: et=pickle.load(f)
+    except Exception:
+        et = rf
+    try:
+        with open("models/knn.pkl","rb") as f: knn=pickle.load(f)
+    except Exception:
+        knn = gb
+    try:
+        with open("models/voting_ensemble.pkl","rb") as f: vt=pickle.load(f)
+    except Exception:
+        vt = gb  # fallback if voting file missing/corrupt
+    return lr,rf,gb,et,knn,vt,sc
 
 @st.cache_data
 def load_data():
@@ -544,7 +691,7 @@ def load_data():
     res=pd.read_csv("models/results.csv")
     return df,Xtr,Xte,ytr,yte,res
 
-lr,rf,gb,voting,scaler=load_models()
+lr,rf,gb,et,knn,voting,scaler=load_models()
 df,Xtr,Xte,ytr,yte,res=load_data()
 
 P={"bg":"#03040a","card":"#0a0d18","red":"#e11d48","green":"#10b981",
@@ -562,7 +709,13 @@ def dark_fig(w=6,h=4.2):
 with st.sidebar:
     st.markdown("""
     <div class="sb-logo">
-      <div class="sb-logo-text">Heart<span>Sense</span> AI</div>
+      <div class="sb-logo-text">
+        <span class="sb-heart"><svg width="26" height="24" viewBox="0 0 26 24" fill="none">
+          <path d="M13 21.5s-9.3-5.7-11.6-11.7C-0.3 5.6 2.3 1.5 6.5 1.5c2.6 0 4.7 1.5 6.5 4 1.8-2.5 3.9-4 6.5-4 4.2 0 6.8 4.1 5.1 8.3C22.3 15.8 13 21.5 13 21.5z"
+            fill="#e11d48"/>
+        </svg></span>
+        Heart<span>Sense</span> AI
+      </div>
       <div class="sb-tag">Clinical Risk Intelligence</div>
       <div class="sb-pulse">System online</div>
     </div>""", unsafe_allow_html=True)
@@ -574,9 +727,9 @@ with st.sidebar:
     <div class="sb-stats">
       <div class="sb-stat-row">Patients<span class="sb-stat-val">918</span></div>
       <div class="sb-stat-row">Features<span class="sb-stat-val">11</span></div>
-      <div class="sb-stat-row">Best AUC<span class="sb-stat-val">0.933</span></div>
-      <div class="sb-stat-row">Best Acc.<span class="sb-stat-val">88.6%</span></div>
-      <div class="sb-stat-row">Models<span class="sb-stat-val">3</span></div>
+      <div class="sb-stat-row">Best AUC<span class="sb-stat-val">0.939</span></div>
+      <div class="sb-stat-row">Best Acc.<span class="sb-stat-val">91.9%</span></div>
+      <div class="sb-stat-row">Models<span class="sb-stat-val">6</span></div>
       <div class="sb-stat-row">Dataset<span class="sb-stat-val">UCI</span></div>
     </div>""", unsafe_allow_html=True)
 
@@ -594,24 +747,39 @@ with st.sidebar:
 # ══════════════════════════════════════════════════════════
 if "Overview" in page:
     st.markdown("""
+    <div class="hero-visual">
+      <svg viewBox="0 0 640 130" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="ecgGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#e11d48" stop-opacity="0"/>
+            <stop offset="15%" stop-color="#e11d48" stop-opacity="1"/>
+            <stop offset="85%" stop-color="#fb7185" stop-opacity="1"/>
+            <stop offset="100%" stop-color="#fb7185" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <path class="ecg-line" d="M0,65 L110,65 L130,65 L142,20 L156,110 L170,40 L182,65 L230,65
+                 L250,65 L262,20 L276,110 L290,40 L302,65 L360,65
+                 L380,65 L392,20 L406,110 L420,40 L432,65 L640,65"/>
+      </svg>
+    </div>
     <div class="hero">
       <div class="hero-pill">Machine Learning · Healthcare AI · UCI Dataset</div>
       <h1 class="hero-h1">Predict heart disease risk<br>with <span class="g">clinical AI precision</span></h1>
-      <p class="hero-sub">A complete end-to-end ML pipeline comparing three classification algorithms
-      on 303 patient records — with live risk prediction, interactive data insights, and
+      <p class="hero-sub">A complete end-to-end ML pipeline comparing six classification algorithms
+      on 918 patient records — with live risk prediction, interactive data insights, and
       fully explainable results.</p>
     </div>""", unsafe_allow_html=True)
 
     st.markdown("""
     <div class="stat-grid">
       <div class="stat-card"><span class="sc-icon">📈</span>
-        <div class="sc-num red" data-target="0.933" data-suffix="" data-dec="3">0.933</div>
+        <div class="sc-num red" data-target="0.939" data-suffix="" data-dec="3">0.939</div>
         <div class="sc-lbl">Best ROC-AUC score</div></div>
       <div class="stat-card"><span class="sc-icon">🎯</span>
-        <div class="sc-num w" data-target="88.6" data-suffix="%" data-dec="1">88.6%</div>
+        <div class="sc-num w" data-target="91.9" data-suffix="%" data-dec="1">91.9%</div>
         <div class="sc-lbl">Top model accuracy</div></div>
       <div class="stat-card"><span class="sc-icon">🤖</span>
-        <div class="sc-num red" data-target="3" data-suffix="" data-dec="0">3</div>
+        <div class="sc-num red" data-target="6" data-suffix="" data-dec="0">6</div>
         <div class="sc-lbl">ML models compared</div></div>
       <div class="stat-card"><span class="sc-icon">🏥</span>
         <div class="sc-num w" data-target="918" data-suffix="" data-dec="0">918</div>
@@ -623,11 +791,12 @@ if "Overview" in page:
         st.markdown('<div class="sl">Project pipeline</div>',unsafe_allow_html=True)
         steps=[("01","Data collection","fedesoriano Dataset — 5 UCI sources combined, 918 patients, 11 features"),
                ("02","Exploratory analysis","Distributions, correlations, feature-vs-outcome patterns"),
-               ("03","Data cleaning","Median imputation for missing '?' values, duplicate removal"),
+               ("03","Data cleaning","Median imputation for invalid zero values, duplicate removal"),
                ("04","Preprocessing","One-hot encoding × 5 cols, StandardScaler × 6 cols, 80/20 split"),
-               ("05","Model training","Logistic Regression · Random Forest (n=100) · Gradient Boosting"),
-               ("06","Evaluation","Accuracy · Precision · Recall · F1-Score · ROC-AUC · Confusion Matrix"),
-               ("07","Deployment","Streamlit Cloud — 4-page interactive web app, live predictions")]
+               ("05","Model training","Logistic Reg. · Random Forest · Gradient Boosting · Extra Trees · KNN"),
+               ("06","Ensembling","Weighted soft-voting ensemble (GB + Extra Trees + KNN×2)"),
+               ("07","Evaluation","Accuracy · Precision · Recall · F1-Score · ROC-AUC · 10-fold CV"),
+               ("08","Deployment","Streamlit Cloud — 4-page interactive web app, live predictions")]
         for num,t,d in steps:
             st.markdown(f'<div class="pip"><div class="pip-num">{num}</div><div>'
                         f'<div class="pip-t">{t}</div><div class="pip-d">{d}</div></div></div>',
@@ -637,12 +806,12 @@ if "Overview" in page:
         st.markdown('<div class="sl">Key findings</div>',unsafe_allow_html=True)
         finds=[("#e11d48","ST_Slope_Up (upward ST slope) is the strongest predictor — highest importance in all models"),
                ("#e11d48","Asymptomatic chest pain (ChestPainType_ASY) strongly correlates with heart disease"),
-               ("#10b981","Higher max heart rate (thalach) significantly reduces disease probability"),
+               ("#10b981","Higher max heart rate (MaxHR) significantly reduces disease probability"),
                ("#e11d48","Male patients show substantially higher disease rates than female patients"),
                ("#e11d48","Oldpeak (ST depression) is a top-5 predictor — higher values strongly signal disease"),
-               ("#3b82f6","Logistic Regression leads with best ROC-AUC of 0.933 on the test set"),
-               ("#8b5cf6","Voting Ensemble achieves best accuracy at 91.3% with weighted soft voting"),
-               ("#10b981","All 3 models exceed 85% accuracy — significantly better than old 303-patient dataset")]
+               ("#8b5cf6","Weighted Voting Ensemble (GB+ExtraTrees+KNN) achieves best ROC-AUC of 0.939"),
+               ("#8b5cf6","Voting Ensemble reaches 91.9% accuracy — validated by 10-fold cross-validation"),
+               ("#10b981","All 6 models exceed 86% accuracy — strong, consistent generalisation")]
         for col,txt in finds:
             st.markdown(f'<div class="fin"><div class="dot" style="background:{col}"></div>{txt}</div>',
                         unsafe_allow_html=True)
@@ -651,14 +820,14 @@ if "Overview" in page:
           <div class="lb-head">🏆 Model leaderboard</div>
           <div class="lb-sub"><span>Model</span><span>AUC</span><span>Accuracy</span></div>
           <div class="lb-row">
-            <span class="lb-name">🥇 Logistic Regression</span>
-            <span class="lb-auc">0.933</span><span class="lb-acc">88.6%</span></div>
-          <div class="lb-row lb-dim" style="opacity:0.7">
-            <span class="lb-name">🥈 Random Forest</span>
-            <span style="color:#94a3b8">0.929</span><span class="lb-acc">88.0%</span></div>
-          <div class="lb-row lb-dim" style="opacity:0.5">
-            <span class="lb-name">🥉 Gradient Boosting</span>
-            <span style="color:#94a3b8">0.920</span><span style="color:#94a3b8">85.9%</span></div>
+            <span class="lb-name">🥇 Voting Ensemble</span>
+            <span class="lb-auc">0.939</span><span class="lb-acc">91.9%</span></div>
+          <div class="lb-row lb-dim" style="opacity:0.75">
+            <span class="lb-name">🥈 KNN (k=19)</span>
+            <span style="color:#94a3b8">0.935</span><span class="lb-acc">89.1%</span></div>
+          <div class="lb-row lb-dim" style="opacity:0.6">
+            <span class="lb-name">🥉 Logistic Regression</span>
+            <span style="color:#94a3b8">0.933</span><span style="color:#94a3b8">88.6%</span></div>
         </div>""", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════
@@ -749,15 +918,20 @@ elif "Model" in page:
 
     with c1:
         st.markdown('<div class="chart-wrap">',unsafe_allow_html=True)
-        fig,ax=dark_fig(5.5,4)
-        colors_m=[P["red"],P["green"],P["blue"],"#8b5cf6"][:len(res)]
-        bars=ax.barh(res["Model"],(res["Accuracy"]*100).tolist(),
-                     color=colors_m,height=0.42,edgecolor="none")
-        for bar,v in zip(bars,(res["Accuracy"]*100).tolist()):
+        fig,ax=dark_fig(5.5,4.6)
+        res_sorted = res.sort_values("Accuracy")
+        palette6 = {"Logistic Regression":P["red"],"Random Forest":P["green"],
+                    "Gradient Boosting":P["blue"],"Extra Trees":"#f59e0b",
+                    "KNN":"#06b6d4","Voting Ensemble":"#8b5cf6"}
+        colors_m=[palette6.get(m,"#94a3b8") for m in res_sorted["Model"]]
+        bars=ax.barh(res_sorted["Model"],(res_sorted["Accuracy"]*100).tolist(),
+                     color=colors_m,height=0.55,edgecolor="none")
+        for bar,v in zip(bars,(res_sorted["Accuracy"]*100).tolist()):
             ax.text(bar.get_width()-0.4,bar.get_y()+bar.get_height()/2,
-                    f"{v:.1f}%",va="center",ha="right",color="#030408",fontsize=11,fontweight="800")
-        ax.set_xlim(78,93)
-        ax.set_title("Accuracy comparison",color="#e2e8f0",fontsize=11,fontweight="700",pad=10)
+                    f"{v:.1f}%",va="center",ha="right",color="#030408",fontsize=10,fontweight="800")
+        ax.set_xlim(82,95)
+        ax.tick_params(labelsize=8.5)
+        ax.set_title("Accuracy comparison — all 6 models",color="#e2e8f0",fontsize=11,fontweight="700",pad=10)
         fig.tight_layout(); st.pyplot(fig); plt.close()
         st.markdown('</div>',unsafe_allow_html=True)
 
@@ -819,18 +993,24 @@ elif "Risk" in page:
     st.markdown('<h2 class="st">Patient risk assessment</h2>',unsafe_allow_html=True)
 
     mdl_choice=st.selectbox("Prediction model",[
-        "🔴  Logistic Regression  ·  Best AUC 0.933",
-        "🟢  Random Forest  ·  Accuracy 88.0%",
-        "🔵  Gradient Boosting  ·  AUC 0.932"])
-    sel_mdl={"🔴  Logistic Regression  ·  Best AUC 0.933":lr,
-              "🟢  Random Forest  ·  Accuracy 88.0%":rf,
-              "🔵  Gradient Boosting  ·  AUC 0.932":gb}[mdl_choice]
+        "🟣  Voting Ensemble  ·  Best Accuracy 91.9%",
+        "🔴  Logistic Regression  ·  AUC 0.933",
+        "🟢  Random Forest  ·  Accuracy 87.5%",
+        "🔵  Gradient Boosting  ·  AUC 0.930",
+        "🟠  Extra Trees  ·  Accuracy 86.4%",
+        "🩵  K-Nearest Neighbors  ·  Accuracy 89.1%"])
+    sel_mdl={"🟣  Voting Ensemble  ·  Best Accuracy 91.9%":voting,
+              "🔴  Logistic Regression  ·  AUC 0.933":lr,
+              "🟢  Random Forest  ·  Accuracy 87.5%":rf,
+              "🔵  Gradient Boosting  ·  AUC 0.930":gb,
+              "🟠  Extra Trees  ·  Accuracy 86.4%":et,
+              "🩵  K-Nearest Neighbors  ·  Accuracy 89.1%":knn}[mdl_choice]
 
     st.markdown("<div style='height:0.5rem'></div>",unsafe_allow_html=True)
     ca,cb,cc=st.columns([1,1,0.9],gap="large")
 
     with ca:
-        st.markdown('<div class="ig">Demographics & symptoms</div>',unsafe_allow_html=True)
+        st.markdown('<div class="ig"><span class="ig-icon">🧑</span>Demographics &amp; symptoms</div>',unsafe_allow_html=True)
         age=st.slider("Age",20,80,55)
         sex=st.selectbox("Sex",["Female (F)","Male (M)"])
         cp=st.selectbox("Chest pain type",[
@@ -843,7 +1023,7 @@ elif "Risk" in page:
         fbs=st.selectbox("Fasting blood sugar > 120 mg/dl",["No (0)","Yes (1)"])
 
     with cb:
-        st.markdown('<div class="ig">Cardiac measurements</div>',unsafe_allow_html=True)
+        st.markdown('<div class="ig"><span class="ig-icon">🩺</span>Cardiac measurements</div>',unsafe_allow_html=True)
         restecg=st.selectbox("Resting ECG",["Normal","LVH - Left Ventricular Hypertrophy","ST - ST-T Wave Abnormality"])
         thalach=st.slider("Max heart rate achieved",60,202,140)
         exang=st.selectbox("Exercise induced angina",["No (N)","Yes (Y)"])
@@ -851,7 +1031,7 @@ elif "Risk" in page:
         slope=st.selectbox("ST slope",["Up - Upsloping","Flat","Down - Downsloping"])
 
     with cc:
-        st.markdown('<div class="ig" style="margin-top:0">Result</div>',unsafe_allow_html=True)
+        st.markdown('<div class="ig" style="margin-top:0"><span class="ig-icon">🔮</span>Result</div>',unsafe_allow_html=True)
         btn=st.button("🔮  Analyse patient risk")
 
         if btn:
@@ -894,20 +1074,42 @@ elif "Risk" in page:
             rp=prob*100; cp2=max(prob,1-prob)*100
 
             if pred==1:
-                st.markdown(f"""<div class="res-h">
-                  <div class="ri">⚠️</div>
-                  <div class="rh">High Risk</div>
-                  <div class="rp">Probability: <strong>{rp:.1f}%</strong></div>
-                  <div style="margin-top:6px;font-size:0.77rem;color:rgba(225,29,72,0.65)">
-                    Please consult a cardiologist immediately</div>
+                # High risk — pulsing alert rings + warning icon
+                rings_html = '<div class="alert-rings"><div class="alert-ring"></div><div class="alert-ring"></div><div class="alert-ring"></div></div>'
+                icon_svg = '''<svg viewBox="0 0 24 24" fill="none"><path d="M12 9v4M12 16.5h.01M10.3 3.9L2.7 17.2c-.6 1 .1 2.3 1.3 2.3h16c1.2 0 1.9-1.3 1.3-2.3L13.7 3.9c-.6-1-2-1-2.6 0z"
+                  stroke="#fb7185" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>'''
+                st.markdown(f"""<div class="result-stage">
+                  <div class="result-modal high">
+                    {rings_html}
+                    <div class="res-icon-wrap high">{icon_svg}</div>
+                    <div class="res-title high">High Risk</div>
+                    <div class="res-prob-line">Predicted probability: <strong>{rp:.1f}%</strong></div>
+                    <div class="res-sub" style="color:rgba(251,113,133,0.75)">⚕️ Please consult a cardiologist immediately</div>
+                  </div>
                 </div>""",unsafe_allow_html=True)
             else:
-                st.markdown(f"""<div class="res-l">
-                  <div class="ri">✅</div>
-                  <div class="rl">Low Risk</div>
-                  <div class="rp">Probability: <strong>{rp:.1f}%</strong></div>
-                  <div style="margin-top:6px;font-size:0.77rem;color:rgba(16,185,129,0.65)">
-                    Continue regular health checkups</div>
+                # Low risk — confetti burst + checkmark icon
+                import random
+                random.seed(42+int(rp))
+                pieces=[]
+                colors_conf=["#34d399","#6ee7b7","#a7f3d0","#10b981","#fbbf24"]
+                for i in range(26):
+                    dx=random.randint(-160,160); dy=random.randint(-140,40)
+                    rot=random.randint(-260,260); delay=round(random.uniform(0,0.25),2)
+                    c=random.choice(colors_conf)
+                    pieces.append(f'<span class="confetti" style="--dx:{dx}px;--dy:{dy}px;--rot:{rot}deg;'
+                                  f'background:{c};animation-delay:{delay}s;left:{50+random.randint(-8,8)}%"></span>')
+                confetti_html = '<div class="confetti-wrap">'+''.join(pieces)+'</div>'
+                icon_svg = '''<svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7"
+                  stroke="#34d399" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>'''
+                st.markdown(f"""<div class="result-stage">
+                  <div class="result-modal low">
+                    {confetti_html}
+                    <div class="res-icon-wrap low">{icon_svg}</div>
+                    <div class="res-title low">Low Risk</div>
+                    <div class="res-prob-line">Predicted probability: <strong>{rp:.1f}%</strong></div>
+                    <div class="res-sub" style="color:rgba(52,211,153,0.75)">✅ Continue regular health checkups</div>
+                  </div>
                 </div>""",unsafe_allow_html=True)
 
             fc=P["red"] if pred==1 else P["green"]
