@@ -865,7 +865,7 @@ elif "Data" in page:
     st.markdown("<div style='height:1.2rem'></div>",unsafe_allow_html=True)
     st.markdown('<div class="chart-wrap">',unsafe_allow_html=True)
     fig,ax=dark_fig(12,5)
-    corr=df.corr()
+    corr=df.corr(numeric_only=True)
     mask=np.triu(np.ones_like(corr,dtype=bool))
     cmap=sns.diverging_palette(0,130,s=85,l=40,as_cmap=True)
     sns.heatmap(corr,mask=mask,annot=True,fmt=".2f",cmap=cmap,ax=ax,
