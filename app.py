@@ -589,6 +589,36 @@ body,html,[class*="css"]{font-family:'Inter',sans-serif!important;-webkit-font-s
   background:rgba(225,29,72,0.14); border:1px solid rgba(225,29,72,0.25);
   font-size:0.72rem; vertical-align:middle;
 }
+
+/* ══════════════════════════════════════════════════════════
+   BATCH CSV UPLOAD UI
+   ══════════════════════════════════════════════════════════ */
+.upload-card{
+  background:var(--card); border:1.5px dashed rgba(225,29,72,0.3);
+  border-radius:20px; padding:2.2rem 1.8rem; text-align:center;
+  transition:border-color 0.25s, background 0.25s;
+}
+.upload-card:hover{ border-color:rgba(225,29,72,0.55); background:rgba(225,29,72,0.03); }
+.upload-icon{ font-size:2.4rem; margin-bottom:0.6rem; opacity:0.85; animation:float-icon 3s ease-in-out infinite; }
+.template-hint{
+  font-size:0.78rem; color:var(--t3); line-height:1.7; margin-top:0.6rem;
+}
+.batch-summary{ display:flex; gap:0.9rem; margin:1.1rem 0 1.3rem; flex-wrap:wrap; }
+.batch-chip{
+  flex:1; min-width:120px; background:var(--card); border:1px solid var(--border);
+  border-radius:14px; padding:0.9rem 1.1rem; text-align:center;
+}
+.batch-chip .bc-num{ font-family:'Poppins',sans-serif; font-size:1.6rem; font-weight:800; }
+.batch-chip .bc-lbl{ font-size:0.65rem; letter-spacing:0.1em; text-transform:uppercase; color:var(--t4); margin-top:2px; }
+[data-testid="stFileUploaderDropzone"]{
+  background:transparent !important; border:none !important;
+}
+.risk-pill{
+  display:inline-flex; align-items:center; gap:5px;
+  padding:0.28rem 0.7rem; border-radius:100px; font-size:0.76rem; font-weight:700;
+}
+.risk-pill.high{ background:rgba(225,29,72,0.14); color:#fb7185; border:1px solid rgba(225,29,72,0.28); }
+.risk-pill.low{ background:rgba(16,185,129,0.12); color:#34d399; border:1px solid rgba(16,185,129,0.25); }
 </style>
 
 <!-- ORBS -->
@@ -704,6 +734,57 @@ def dark_fig(w=6,h=4.2):
     ax.tick_params(colors=P["t2"],labelsize=8)
     ax.yaxis.grid(True,color=P["border"],lw=0.6,ls="--"); ax.set_axisbelow(True)
     return fig,ax
+
+# ── BATCH CSV PREDICTION HELPERS ─────────────────────────
+REQUIRED_COLS = ["Age","Sex","ChestPainType","RestingBP","Cholesterol",
+                  "FastingBS","RestingECG","MaxHR","ExerciseAngina","Oldpeak","ST_Slope"]
+VALID_VALUES = {
+    "Sex": {"M","F"},
+    "ChestPainType": {"ASY","ATA","NAP","TA"},
+    "RestingECG": {"Normal","LVH","ST"},
+    "ExerciseAngina": {"Y","N"},
+    "ST_Slope": {"Up","Flat","Down"},
+}
+
+def make_template_csv():
+    sample = pd.DataFrame([
+        {"Age":54,"Sex":"M","ChestPainType":"ASY","RestingBP":140,"Cholesterol":239,
+         "FastingBS":0,"RestingECG":"Normal","MaxHR":160,"ExerciseAngina":"N","Oldpeak":1.2,"ST_Slope":"Flat"},
+        {"Age":45,"Sex":"F","ChestPainType":"ATA","RestingBP":120,"Cholesterol":204,
+         "FastingBS":0,"RestingECG":"Normal","MaxHR":172,"ExerciseAngina":"N","Oldpeak":0.0,"ST_Slope":"Up"},
+    ])
+    return sample.to_csv(index=False).encode("utf-8")
+
+def validate_csv(raw_df):
+    errors=[]
+    missing=[c for c in REQUIRED_COLS if c not in raw_df.columns]
+    if missing:
+        errors.append(f"Missing required column(s): {', '.join(missing)}")
+        return errors
+    for col,valid in VALID_VALUES.items():
+        bad=set(raw_df[col].dropna().astype(str).unique()) - valid
+        if bad:
+            errors.append(f"Column '{col}' has invalid value(s) {sorted(bad)} — allowed: {sorted(valid)}")
+    for col in ["Age","RestingBP","Cholesterol","FastingBS","MaxHR","Oldpeak"]:
+        if not pd.api.types.is_numeric_dtype(raw_df[col]):
+            errors.append(f"Column '{col}' must contain numbers only")
+    if raw_df[REQUIRED_COLS].isnull().any().any():
+        errors.append("Some required cells are empty — please fill in every column for every row")
+    return errors
+
+def encode_batch(raw_df):
+    """Takes a raw dataframe (same column format as heart.csv) and returns
+    an encoded + scaled dataframe ready for model.predict(), aligned to
+    the exact training column order."""
+    cat_cols=['Sex','ChestPainType','RestingECG','ExerciseAngina','ST_Slope']
+    num_cols=['Age','RestingBP','Cholesterol','FastingBS','MaxHR','Oldpeak']
+    df_enc=pd.get_dummies(raw_df[REQUIRED_COLS].copy(),columns=cat_cols,drop_first=False)
+    for col in Xtr.columns:
+        if col not in df_enc.columns:
+            df_enc[col]=0.0
+    df_enc=df_enc[Xtr.columns]
+    df_enc[num_cols]=scaler.transform(df_enc[num_cols])
+    return df_enc
 
 # ── SIDEBAR ─────────────────────────────────────────────
 with st.sidebar:
@@ -1006,142 +1087,219 @@ elif "Risk" in page:
               "🟠  Extra Trees  ·  Accuracy 86.4%":et,
               "🩵  K-Nearest Neighbors  ·  Accuracy 89.1%":knn}[mdl_choice]
 
+    input_mode = st.radio("Input method", ["✍️  Manual Entry", "📁  Upload CSV (Batch)"], horizontal=True)
+
     st.markdown("<div style='height:0.5rem'></div>",unsafe_allow_html=True)
-    ca,cb,cc=st.columns([1,1,0.9],gap="large")
 
-    with ca:
-        st.markdown('<div class="ig"><span class="ig-icon">🧑</span>Demographics &amp; symptoms</div>',unsafe_allow_html=True)
-        age=st.slider("Age",20,80,55)
-        sex=st.selectbox("Sex",["Female (F)","Male (M)"])
-        cp=st.selectbox("Chest pain type",[
-            "ASY - Asymptomatic (most common high risk)",
-            "ATA - Atypical Angina",
-            "NAP - Non-Anginal Pain",
-            "TA - Typical Angina"])
-        trestbps=st.slider("Resting blood pressure (mm Hg)",80,200,130)
-        chol=st.slider("Cholesterol (mg/dl)",100,600,200)
-        fbs=st.selectbox("Fasting blood sugar > 120 mg/dl",["No (0)","Yes (1)"])
+    if "Manual" in input_mode:
+        ca,cb,cc=st.columns([1,1,0.9],gap="large")
 
-    with cb:
-        st.markdown('<div class="ig"><span class="ig-icon">🩺</span>Cardiac measurements</div>',unsafe_allow_html=True)
-        restecg=st.selectbox("Resting ECG",["Normal","LVH - Left Ventricular Hypertrophy","ST - ST-T Wave Abnormality"])
-        thalach=st.slider("Max heart rate achieved",60,202,140)
-        exang=st.selectbox("Exercise induced angina",["No (N)","Yes (Y)"])
-        oldpeak=st.slider("Oldpeak (ST depression)",-2.6,6.2,0.0,0.1)
-        slope=st.selectbox("ST slope",["Up - Upsloping","Flat","Down - Downsloping"])
+        with ca:
+            st.markdown('<div class="ig"><span class="ig-icon">🧑</span>Demographics &amp; symptoms</div>',unsafe_allow_html=True)
+            age=st.slider("Age",20,80,55)
+            sex=st.selectbox("Sex",["Female (F)","Male (M)"])
+            cp=st.selectbox("Chest pain type",[
+                "ASY - Asymptomatic (most common high risk)",
+                "ATA - Atypical Angina",
+                "NAP - Non-Anginal Pain",
+                "TA - Typical Angina"])
+            trestbps=st.slider("Resting blood pressure (mm Hg)",80,200,130)
+            chol=st.slider("Cholesterol (mg/dl)",100,600,200)
+            fbs=st.selectbox("Fasting blood sugar > 120 mg/dl",["No (0)","Yes (1)"])
 
-    with cc:
-        st.markdown('<div class="ig" style="margin-top:0"><span class="ig-icon">🔮</span>Result</div>',unsafe_allow_html=True)
-        btn=st.button("🔮  Analyse patient risk")
+        with cb:
+            st.markdown('<div class="ig"><span class="ig-icon">🩺</span>Cardiac measurements</div>',unsafe_allow_html=True)
+            restecg=st.selectbox("Resting ECG",["Normal","LVH - Left Ventricular Hypertrophy","ST - ST-T Wave Abnormality"])
+            thalach=st.slider("Max heart rate achieved",60,202,140)
+            exang=st.selectbox("Exercise induced angina",["No (N)","Yes (Y)"])
+            oldpeak=st.slider("Oldpeak (ST depression)",-2.6,6.2,0.0,0.1)
+            slope=st.selectbox("ST slope",["Up - Upsloping","Flat","Down - Downsloping"])
 
-        if btn:
-            # Parse inputs → match exact training column names
-            sex_val   = "M" if "Male" in sex else "F"
-            cp_val    = cp.split(" - ")[0].strip()   # ASY / ATA / NAP / TA
-            fbs_val   = int(fbs.split("(")[1][0])
-            ecg_val   = restecg.split(" - ")[0].strip()  # Normal / LVH / ST
-            exang_val = "Y" if "Yes" in exang else "N"
-            slope_val = slope.split(" - ")[0].strip()  # Up / Flat / Down
+        with cc:
+            st.markdown('<div class="ig" style="margin-top:0"><span class="ig-icon">🔮</span>Result</div>',unsafe_allow_html=True)
+            btn=st.button("🔮  Analyse patient risk")
 
-            # Build dataframe with ALL training columns set to 0
-            enc = pd.DataFrame(0.0, index=[0], columns=Xtr.columns)
+            if btn:
+                # Parse inputs → match exact training column names
+                sex_val   = "M" if "Male" in sex else "F"
+                cp_val    = cp.split(" - ")[0].strip()   # ASY / ATA / NAP / TA
+                fbs_val   = int(fbs.split("(")[1][0])
+                ecg_val   = restecg.split(" - ")[0].strip()  # Normal / LVH / ST
+                exang_val = "Y" if "Yes" in exang else "N"
+                slope_val = slope.split(" - ")[0].strip()  # Up / Flat / Down
 
-            # Fill numerical features
-            enc["Age"]        = float(age)
-            enc["RestingBP"]  = float(trestbps)
-            enc["Cholesterol"]= float(chol)
-            enc["FastingBS"]  = float(fbs_val)
-            enc["MaxHR"]      = float(thalach)
-            enc["Oldpeak"]    = float(oldpeak)
+                # Build dataframe with ALL training columns set to 0
+                enc = pd.DataFrame(0.0, index=[0], columns=Xtr.columns)
 
-            # Fill one-hot encoded columns
-            def set_ohe(col):
-                if col in enc.columns:
-                    enc[col] = 1.0
+                # Fill numerical features
+                enc["Age"]        = float(age)
+                enc["RestingBP"]  = float(trestbps)
+                enc["Cholesterol"]= float(chol)
+                enc["FastingBS"]  = float(fbs_val)
+                enc["MaxHR"]      = float(thalach)
+                enc["Oldpeak"]    = float(oldpeak)
 
-            set_ohe(f"Sex_{sex_val}")
-            set_ohe(f"ChestPainType_{cp_val}")
-            set_ohe(f"RestingECG_{ecg_val}")
-            set_ohe(f"ExerciseAngina_{exang_val}")
-            set_ohe(f"ST_Slope_{slope_val}")
+                # Fill one-hot encoded columns
+                def set_ohe(col):
+                    if col in enc.columns:
+                        enc[col] = 1.0
 
-            # Scale using SAME scaler fitted on training data
-            num_cols = ["Age","RestingBP","Cholesterol","FastingBS","MaxHR","Oldpeak"]
-            enc[num_cols] = scaler.transform(enc[num_cols])
+                set_ohe(f"Sex_{sex_val}")
+                set_ohe(f"ChestPainType_{cp_val}")
+                set_ohe(f"RestingECG_{ecg_val}")
+                set_ohe(f"ExerciseAngina_{exang_val}")
+                set_ohe(f"ST_Slope_{slope_val}")
 
-            pred=sel_mdl.predict(enc)[0]
-            prob=sel_mdl.predict_proba(enc)[0][1]
-            rp=prob*100; cp2=max(prob,1-prob)*100
+                # Scale using SAME scaler fitted on training data
+                num_cols = ["Age","RestingBP","Cholesterol","FastingBS","MaxHR","Oldpeak"]
+                enc[num_cols] = scaler.transform(enc[num_cols])
 
-            if pred==1:
-                # High risk — pulsing alert rings + warning icon
-                rings_html = '<div class="alert-rings"><div class="alert-ring"></div><div class="alert-ring"></div><div class="alert-ring"></div></div>'
-                icon_svg = '''<svg viewBox="0 0 24 24" fill="none"><path d="M12 9v4M12 16.5h.01M10.3 3.9L2.7 17.2c-.6 1 .1 2.3 1.3 2.3h16c1.2 0 1.9-1.3 1.3-2.3L13.7 3.9c-.6-1-2-1-2.6 0z"
-                  stroke="#fb7185" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>'''
-                st.markdown(f"""<div class="result-stage">
-                  <div class="result-modal high">
-                    {rings_html}
-                    <div class="res-icon-wrap high">{icon_svg}</div>
-                    <div class="res-title high">High Risk</div>
-                    <div class="res-prob-line">Predicted probability: <strong>{rp:.1f}%</strong></div>
-                    <div class="res-sub" style="color:rgba(251,113,133,0.75)">⚕️ Please consult a cardiologist immediately</div>
+                pred=sel_mdl.predict(enc)[0]
+                prob=sel_mdl.predict_proba(enc)[0][1]
+                rp=prob*100; cp2=max(prob,1-prob)*100
+
+                if pred==1:
+                    # High risk — pulsing alert rings + warning icon
+                    rings_html = '<div class="alert-rings"><div class="alert-ring"></div><div class="alert-ring"></div><div class="alert-ring"></div></div>'
+                    icon_svg = '''<svg viewBox="0 0 24 24" fill="none"><path d="M12 9v4M12 16.5h.01M10.3 3.9L2.7 17.2c-.6 1 .1 2.3 1.3 2.3h16c1.2 0 1.9-1.3 1.3-2.3L13.7 3.9c-.6-1-2-1-2.6 0z"
+                      stroke="#fb7185" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>'''
+                    st.markdown(f"""<div class="result-stage">
+                      <div class="result-modal high">
+                        {rings_html}
+                        <div class="res-icon-wrap high">{icon_svg}</div>
+                        <div class="res-title high">High Risk</div>
+                        <div class="res-prob-line">Predicted probability: <strong>{rp:.1f}%</strong></div>
+                        <div class="res-sub" style="color:rgba(251,113,133,0.75)">⚕️ Please consult a cardiologist immediately</div>
+                      </div>
+                    </div>""",unsafe_allow_html=True)
+                else:
+                    # Low risk — confetti burst + checkmark icon
+                    import random
+                    random.seed(42+int(rp))
+                    pieces=[]
+                    colors_conf=["#34d399","#6ee7b7","#a7f3d0","#10b981","#fbbf24"]
+                    for i in range(26):
+                        dx=random.randint(-160,160); dy=random.randint(-140,40)
+                        rot=random.randint(-260,260); delay=round(random.uniform(0,0.25),2)
+                        c=random.choice(colors_conf)
+                        pieces.append(f'<span class="confetti" style="--dx:{dx}px;--dy:{dy}px;--rot:{rot}deg;'
+                                      f'background:{c};animation-delay:{delay}s;left:{50+random.randint(-8,8)}%"></span>')
+                    confetti_html = '<div class="confetti-wrap">'+''.join(pieces)+'</div>'
+                    icon_svg = '''<svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7"
+                      stroke="#34d399" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>'''
+                    st.markdown(f"""<div class="result-stage">
+                      <div class="result-modal low">
+                        {confetti_html}
+                        <div class="res-icon-wrap low">{icon_svg}</div>
+                        <div class="res-title low">Low Risk</div>
+                        <div class="res-prob-line">Predicted probability: <strong>{rp:.1f}%</strong></div>
+                        <div class="res-sub" style="color:rgba(52,211,153,0.75)">✅ Continue regular health checkups</div>
+                      </div>
+                    </div>""",unsafe_allow_html=True)
+
+                fc=P["red"] if pred==1 else P["green"]
+                st.markdown(f"""<div class="cbar-wrap">
+                  <div class="cbar-lbl">Model confidence</div>
+                  <div class="cbar-bg">
+                    <div class="cbar-fill-{'h' if pred==1 else 'l'}" style="--w:{cp2:.1f}%;width:{cp2:.1f}%"></div>
                   </div>
+                  <div class="cbar-pct">{cp2:.1f}%</div>
                 </div>""",unsafe_allow_html=True)
+
+                fig,ax=plt.subplots(figsize=(4,3.2))
+                fig.patch.set_facecolor(P["bg"]); ax.set_facecolor(P["bg"])
+                th=np.linspace(0,np.pi,300)
+                ax.plot(np.cos(th),np.sin(th),color="#0f1524",lw=16,solid_capstyle="round")
+                th2=np.linspace(np.pi,np.pi*(1-prob),300)
+                ax.plot(np.cos(th2),np.sin(th2),color=fc,lw=16,solid_capstyle="round")
+                ax.plot(np.cos(th2),np.sin(th2),color=fc,lw=20,alpha=0.2,solid_capstyle="round")
+                ax.text(0,0.04,f"{rp:.1f}%",ha="center",va="center",
+                        fontsize=26,fontweight="900",color=fc)
+                ax.text(0,-0.26,"RISK SCORE",ha="center",color=P["t2"],fontsize=7.5,fontweight="700")
+                ax.text(-0.92,-0.1,"0%",ha="center",color=P["t3"],fontsize=7.5)
+                ax.text( 0.92,-0.1,"100%",ha="center",color=P["t3"],fontsize=7.5)
+                ax.set_xlim(-1.25,1.25); ax.set_ylim(-0.45,1.2); ax.axis("off")
+                fig.tight_layout(); st.pyplot(fig); plt.close()
             else:
-                # Low risk — confetti burst + checkmark icon
-                import random
-                random.seed(42+int(rp))
-                pieces=[]
-                colors_conf=["#34d399","#6ee7b7","#a7f3d0","#10b981","#fbbf24"]
-                for i in range(26):
-                    dx=random.randint(-160,160); dy=random.randint(-140,40)
-                    rot=random.randint(-260,260); delay=round(random.uniform(0,0.25),2)
-                    c=random.choice(colors_conf)
-                    pieces.append(f'<span class="confetti" style="--dx:{dx}px;--dy:{dy}px;--rot:{rot}deg;'
-                                  f'background:{c};animation-delay:{delay}s;left:{50+random.randint(-8,8)}%"></span>')
-                confetti_html = '<div class="confetti-wrap">'+''.join(pieces)+'</div>'
-                icon_svg = '''<svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7"
-                  stroke="#34d399" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>'''
-                st.markdown(f"""<div class="result-stage">
-                  <div class="result-modal low">
-                    {confetti_html}
-                    <div class="res-icon-wrap low">{icon_svg}</div>
-                    <div class="res-title low">Low Risk</div>
-                    <div class="res-prob-line">Predicted probability: <strong>{rp:.1f}%</strong></div>
-                    <div class="res-sub" style="color:rgba(52,211,153,0.75)">✅ Continue regular health checkups</div>
+                st.markdown("""<div class="idle-state">
+                  <div class="idle-icon">🫀</div>
+                  <div style="font-size:0.85rem;color:rgba(255,255,255,0.22);line-height:1.8">
+                    Enter patient details<br>and click
+                    <strong style="color:rgba(255,255,255,0.4)">Analyse patient risk</strong>
                   </div>
                 </div>""",unsafe_allow_html=True)
 
-            fc=P["red"] if pred==1 else P["green"]
-            st.markdown(f"""<div class="cbar-wrap">
-              <div class="cbar-lbl">Model confidence</div>
-              <div class="cbar-bg">
-                <div class="cbar-fill-{'h' if pred==1 else 'l'}" style="--w:{cp2:.1f}%;width:{cp2:.1f}%"></div>
-              </div>
-              <div class="cbar-pct">{cp2:.1f}%</div>
-            </div>""",unsafe_allow_html=True)
+        st.markdown('<div class="warn">⚠️ For educational purposes only — not a substitute for professional medical diagnosis.</div>',unsafe_allow_html=True)
 
-            fig,ax=plt.subplots(figsize=(4,3.2))
-            fig.patch.set_facecolor(P["bg"]); ax.set_facecolor(P["bg"])
-            th=np.linspace(0,np.pi,300)
-            ax.plot(np.cos(th),np.sin(th),color="#0f1524",lw=16,solid_capstyle="round")
-            th2=np.linspace(np.pi,np.pi*(1-prob),300)
-            ax.plot(np.cos(th2),np.sin(th2),color=fc,lw=16,solid_capstyle="round")
-            ax.plot(np.cos(th2),np.sin(th2),color=fc,lw=20,alpha=0.2,solid_capstyle="round")
-            ax.text(0,0.04,f"{rp:.1f}%",ha="center",va="center",
-                    fontsize=26,fontweight="900",color=fc)
-            ax.text(0,-0.26,"RISK SCORE",ha="center",color=P["t2"],fontsize=7.5,fontweight="700")
-            ax.text(-0.92,-0.1,"0%",ha="center",color=P["t3"],fontsize=7.5)
-            ax.text( 0.92,-0.1,"100%",ha="center",color=P["t3"],fontsize=7.5)
-            ax.set_xlim(-1.25,1.25); ax.set_ylim(-0.45,1.2); ax.axis("off")
-            fig.tight_layout(); st.pyplot(fig); plt.close()
-        else:
-            st.markdown("""<div class="idle-state">
-              <div class="idle-icon">🫀</div>
-              <div style="font-size:0.85rem;color:rgba(255,255,255,0.22);line-height:1.8">
-                Enter patient details<br>and click
-                <strong style="color:rgba(255,255,255,0.4)">Analyse patient risk</strong>
-              </div>
-            </div>""",unsafe_allow_html=True)
+    else:
+        # ══════════════════════════════════════════════════
+        # CSV BATCH UPLOAD MODE
+        # ══════════════════════════════════════════════════
+        st.markdown("""
+        <div class="upload-card">
+          <div class="upload-icon">📁</div>
+          <div style="font-size:1.05rem;font-weight:700;color:#fff;">Upload a CSV of patients</div>
+          <div class="template-hint">
+            Don't know the exact format? Download the template below, fill in your rows<br>
+            in the same style, and upload it here — no manual form-filling needed.
+          </div>
+        </div>""", unsafe_allow_html=True)
+
+        st.markdown("<div style='height:0.9rem'></div>",unsafe_allow_html=True)
+        dl_col, up_col = st.columns([0.4,0.6])
+        with dl_col:
+            st.download_button("⬇️  Download CSV template", data=make_template_csv(),
+                                file_name="heartsense_template.csv", mime="text/csv",
+                                use_container_width=True)
+        with up_col:
+            st.caption("Required columns: " + ", ".join(REQUIRED_COLS))
+
+        uploaded = st.file_uploader("Upload your patient CSV", type=["csv"], label_visibility="collapsed")
+
+        if uploaded is not None:
+            try:
+                raw_df = pd.read_csv(uploaded)
+            except Exception:
+                st.error("⚠️ Could not read that file — please make sure it's a valid CSV.")
+                raw_df = None
+
+            if raw_df is not None:
+                errors = validate_csv(raw_df)
+                if errors:
+                    st.markdown('<div class="warn">⚠️ Please fix the following before we can predict:</div>',unsafe_allow_html=True)
+                    for e in errors:
+                        st.markdown(f'<div class="warn">• {e}</div>',unsafe_allow_html=True)
+                else:
+                    with st.spinner("Analysing patients..."):
+                        enc_batch = encode_batch(raw_df)
+                        preds = sel_mdl.predict(enc_batch)
+                        probs = sel_mdl.predict_proba(enc_batch)[:,1]
+
+                    results = raw_df[REQUIRED_COLS].copy()
+                    results.insert(0,"Patient",[f"#{i+1}" for i in range(len(results))])
+                    results["Risk"] = np.where(preds==1,"High Risk","Low Risk")
+                    results["Probability %"] = (probs*100).round(1)
+
+                    n_high = int((preds==1).sum()); n_low = int((preds==0).sum())
+                    st.markdown(f"""
+                    <div class="batch-summary">
+                      <div class="batch-chip"><div class="bc-num" style="color:#fff">{len(results)}</div><div class="bc-lbl">Patients analysed</div></div>
+                      <div class="batch-chip"><div class="bc-num" style="color:#fb7185">{n_high}</div><div class="bc-lbl">High risk</div></div>
+                      <div class="batch-chip"><div class="bc-num" style="color:#34d399">{n_low}</div><div class="bc-lbl">Low risk</div></div>
+                    </div>""", unsafe_allow_html=True)
+
+                    def style_risk(val):
+                        if val=="High Risk": return "background-color:rgba(225,29,72,0.16);color:#fb7185;font-weight:700"
+                        return "background-color:rgba(16,185,129,0.13);color:#34d399;font-weight:700"
+
+                    st.dataframe(
+                        results.style.map(style_risk, subset=["Risk"])
+                               .set_properties(**{"color":"#e2e8f0","background-color":P["card"]}),
+                        use_container_width=True, hide_index=True
+                    )
+
+                    csv_out = results.to_csv(index=False).encode("utf-8")
+                    st.download_button("⬇️  Download results as CSV", data=csv_out,
+                                        file_name="heartsense_batch_results.csv", mime="text/csv")
 
         st.markdown('<div class="warn">⚠️ For educational purposes only — not a substitute for professional medical diagnosis.</div>',unsafe_allow_html=True)
