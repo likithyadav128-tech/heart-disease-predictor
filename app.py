@@ -1520,38 +1520,44 @@ elif "Risk" in page:
                         val,_ = extracted.get(field,(None,None))
                         return val if val is not None else default
 
+                    # Scope every widget key to THIS file so a new upload always
+                    # shows its own freshly-extracted values instead of reusing
+                    # whatever was left in session_state from a previous report.
+                    import hashlib
+                    fk = hashlib.md5(file_key.encode()).hexdigest()[:10]
+
                     ra,rb,rc = st.columns([1,1,0.9], gap="large")
                     with ra:
                         st.markdown('<div class="ig"><span class="ig-icon">🧑</span>Demographics &amp; symptoms</div>',unsafe_allow_html=True)
-                        r_age = st.slider("Age",20,80,int(ev("Age",55)),key="r_age")
+                        r_age = st.slider("Age",20,80,int(ev("Age",55)),key=f"r_age_{fk}")
                         r_sex_default = 1 if ev("Sex","F")=="M" else 0
-                        r_sex = st.selectbox("Sex",["Female (F)","Male (M)"],index=r_sex_default,key="r_sex")
+                        r_sex = st.selectbox("Sex",["Female (F)","Male (M)"],index=r_sex_default,key=f"r_sex_{fk}")
                         cp_map = {"ASY":0,"ATA":1,"NAP":2,"TA":3}
                         cp_opts = ["ASY - Asymptomatic (most common high risk)","ATA - Atypical Angina",
                                    "NAP - Non-Anginal Pain","TA - Typical Angina"]
                         r_cp = st.selectbox("Chest pain type", cp_opts,
-                                             index=cp_map.get(ev("ChestPainType","ASY"),0), key="r_cp")
-                        r_trestbps = st.slider("Resting blood pressure (mm Hg)",80,200,int(ev("RestingBP",130)),key="r_bp")
-                        r_chol = st.slider("Cholesterol (mg/dl)",100,600,int(ev("Cholesterol",200)),key="r_chol")
+                                             index=cp_map.get(ev("ChestPainType","ASY"),0), key=f"r_cp_{fk}")
+                        r_trestbps = st.slider("Resting blood pressure (mm Hg)",80,200,int(ev("RestingBP",130)),key=f"r_bp_{fk}")
+                        r_chol = st.slider("Cholesterol (mg/dl)",100,600,int(ev("Cholesterol",200)),key=f"r_chol_{fk}")
                         r_fbs = st.selectbox("Fasting blood sugar > 120 mg/dl",["No (0)","Yes (1)"],
-                                              index=int(ev("FastingBS",0)),key="r_fbs")
+                                              index=int(ev("FastingBS",0)),key=f"r_fbs_{fk}")
                     with rb:
                         st.markdown('<div class="ig"><span class="ig-icon">🩺</span>Cardiac measurements</div>',unsafe_allow_html=True)
                         ecg_map = {"Normal":0,"LVH":1,"ST":2}
                         r_restecg = st.selectbox("Resting ECG",
                             ["Normal","LVH - Left Ventricular Hypertrophy","ST - ST-T Wave Abnormality"],
-                            index=ecg_map.get(ev("RestingECG","Normal"),0),key="r_ecg")
-                        r_thalach = st.slider("Max heart rate achieved",60,202,int(ev("MaxHR",140)),key="r_hr")
+                            index=ecg_map.get(ev("RestingECG","Normal"),0),key=f"r_ecg_{fk}")
+                        r_thalach = st.slider("Max heart rate achieved",60,202,int(ev("MaxHR",140)),key=f"r_hr_{fk}")
                         ang_default = 1 if ev("ExerciseAngina","N")=="Y" else 0
-                        r_exang = st.selectbox("Exercise induced angina",["No (N)","Yes (Y)"],index=ang_default,key="r_ang")
-                        r_oldpeak = st.slider("Oldpeak (ST depression)",-2.6,6.2,float(ev("Oldpeak",0.0)),0.1,key="r_op")
+                        r_exang = st.selectbox("Exercise induced angina",["No (N)","Yes (Y)"],index=ang_default,key=f"r_ang_{fk}")
+                        r_oldpeak = st.slider("Oldpeak (ST depression)",-2.6,6.2,float(ev("Oldpeak",0.0)),0.1,key=f"r_op_{fk}")
                         slope_map = {"Up":0,"Flat":1,"Down":2}
                         r_slope = st.selectbox("ST slope",["Up - Upsloping","Flat","Down - Downsloping"],
-                                                index=slope_map.get(ev("ST_Slope","Flat"),1),key="r_slope")
+                                                index=slope_map.get(ev("ST_Slope","Flat"),1),key=f"r_slope_{fk}")
 
                     with rc:
                         st.markdown('<div class="ig" style="margin-top:0"><span class="ig-icon">🔮</span>Result</div>',unsafe_allow_html=True)
-                        r_btn = st.button("🔮  Analyse patient risk", key="r_predict_btn")
+                        r_btn = st.button("🔮  Analyse patient risk", key=f"r_predict_btn_{fk}")
 
                         if r_btn:
                             sex_val   = "M" if "Male" in r_sex else "F"
