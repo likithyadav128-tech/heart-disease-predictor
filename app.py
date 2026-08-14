@@ -5,6 +5,21 @@ import streamlit as st, pandas as pd, numpy as np, pickle
 import matplotlib.pyplot as plt, seaborn as sns, warnings
 from sklearn.metrics import roc_curve, roc_auc_score, confusion_matrix
 import matplotlib.patches as mpatches
+import re
+
+try:
+    import pdfplumber
+    from PIL import Image
+    import pytesseract
+    try:
+        from pdf2image import convert_from_bytes
+        PDF2IMAGE_OK = True
+    except Exception:
+        PDF2IMAGE_OK = False
+    REPORT_UPLOAD_OK = True
+except Exception:
+    REPORT_UPLOAD_OK = False
+    PDF2IMAGE_OK = False
 warnings.filterwarnings('ignore')
 
 st.set_page_config(page_title="HeartSense AI", page_icon="🫀", layout="wide",
@@ -786,6 +801,206 @@ def encode_batch(raw_df):
     df_enc[num_cols]=scaler.transform(df_enc[num_cols])
     return df_enc
 
+def render_prediction_result(pred, prob):
+    """Renders the dramatic popup (confetti / alert-rings) + confidence bar
+    + risk gauge for a single prediction. Shared by Manual Entry and
+    Report Upload modes."""
+    rp=prob*100; cp2=max(prob,1-prob)*100
+
+    if pred==1:
+        rings_html = '<div class="alert-rings"><div class="alert-ring"></div><div class="alert-ring"></div><div class="alert-ring"></div></div>'
+        icon_svg = '''<svg viewBox="0 0 24 24" fill="none"><path d="M12 9v4M12 16.5h.01M10.3 3.9L2.7 17.2c-.6 1 .1 2.3 1.3 2.3h16c1.2 0 1.9-1.3 1.3-2.3L13.7 3.9c-.6-1-2-1-2.6 0z"
+          stroke="#fb7185" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>'''
+        st.markdown(f"""<div class="result-stage">
+          <div class="result-modal high">
+            {rings_html}
+            <div class="res-icon-wrap high">{icon_svg}</div>
+            <div class="res-title high">High Risk</div>
+            <div class="res-prob-line">Predicted probability: <strong>{rp:.1f}%</strong></div>
+            <div class="res-sub" style="color:rgba(251,113,133,0.75)">⚕️ Please consult a cardiologist immediately</div>
+          </div>
+        </div>""",unsafe_allow_html=True)
+    else:
+        import random
+        random.seed(42+int(rp))
+        pieces=[]
+        colors_conf=["#34d399","#6ee7b7","#a7f3d0","#10b981","#fbbf24"]
+        for i in range(26):
+            dx=random.randint(-160,160); dy=random.randint(-140,40)
+            rot=random.randint(-260,260); delay=round(random.uniform(0,0.25),2)
+            c=random.choice(colors_conf)
+            pieces.append(f'<span class="confetti" style="--dx:{dx}px;--dy:{dy}px;--rot:{rot}deg;'
+                          f'background:{c};animation-delay:{delay}s;left:{50+random.randint(-8,8)}%"></span>')
+        confetti_html = '<div class="confetti-wrap">'+''.join(pieces)+'</div>'
+        icon_svg = '''<svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7"
+          stroke="#34d399" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>'''
+        st.markdown(f"""<div class="result-stage">
+          <div class="result-modal low">
+            {confetti_html}
+            <div class="res-icon-wrap low">{icon_svg}</div>
+            <div class="res-title low">Low Risk</div>
+            <div class="res-prob-line">Predicted probability: <strong>{rp:.1f}%</strong></div>
+            <div class="res-sub" style="color:rgba(52,211,153,0.75)">✅ Continue regular health checkups</div>
+          </div>
+        </div>""",unsafe_allow_html=True)
+
+    fc=P["red"] if pred==1 else P["green"]
+    st.markdown(f"""<div class="cbar-wrap">
+      <div class="cbar-lbl">Model confidence</div>
+      <div class="cbar-bg">
+        <div class="cbar-fill-{'h' if pred==1 else 'l'}" style="--w:{cp2:.1f}%;width:{cp2:.1f}%"></div>
+      </div>
+      <div class="cbar-pct">{cp2:.1f}%</div>
+    </div>""",unsafe_allow_html=True)
+
+    fig,ax=plt.subplots(figsize=(4,3.2))
+    fig.patch.set_facecolor(P["bg"]); ax.set_facecolor(P["bg"])
+    th=np.linspace(0,np.pi,300)
+    ax.plot(np.cos(th),np.sin(th),color="#0f1524",lw=16,solid_capstyle="round")
+    th2=np.linspace(np.pi,np.pi*(1-prob),300)
+    ax.plot(np.cos(th2),np.sin(th2),color=fc,lw=16,solid_capstyle="round")
+    ax.plot(np.cos(th2),np.sin(th2),color=fc,lw=20,alpha=0.2,solid_capstyle="round")
+    ax.text(0,0.04,f"{rp:.1f}%",ha="center",va="center",
+            fontsize=26,fontweight="900",color=fc)
+    ax.text(0,-0.26,"RISK SCORE",ha="center",color=P["t2"],fontsize=7.5,fontweight="700")
+    ax.text(-0.92,-0.1,"0%",ha="center",color=P["t3"],fontsize=7.5)
+    ax.text( 0.92,-0.1,"100%",ha="center",color=P["t3"],fontsize=7.5)
+    ax.set_xlim(-1.25,1.25); ax.set_ylim(-0.45,1.2); ax.axis("off")
+    fig.tight_layout(); st.pyplot(fig); plt.close()
+
+# ── HOSPITAL REPORT (PDF / IMAGE) EXTRACTION ─────────────
+def extract_text_from_file(uploaded_file):
+    """Returns (text, method_used) from an uploaded PDF or image file."""
+    name = uploaded_file.name.lower()
+    data = uploaded_file.getvalue()
+
+    if name.endswith(".pdf"):
+        text = ""
+        try:
+            import io
+            with pdfplumber.open(io.BytesIO(data)) as pdf:
+                for page in pdf.pages:
+                    t = page.extract_text()
+                    if t: text += t + "\n"
+        except Exception:
+            text = ""
+
+        if len(text.strip()) < 25 and PDF2IMAGE_OK:
+            # Likely a scanned PDF with no text layer — fall back to OCR
+            try:
+                pages = convert_from_bytes(data, dpi=200)
+                ocr_text = ""
+                for p in pages:
+                    ocr_text += pytesseract.image_to_string(p) + "\n"
+                if len(ocr_text.strip()) > len(text.strip()):
+                    return ocr_text, "OCR (scanned PDF)"
+            except Exception:
+                pass
+        return text, "PDF text layer"
+    else:
+        import io
+        img = Image.open(io.BytesIO(data))
+        text = pytesseract.image_to_string(img)
+        return text, "OCR (image)"
+
+def extract_clinical_fields(text):
+    """Parses free-text hospital report content and returns a dict of
+    field -> (value, matched_snippet). Value is None if not found."""
+    t = text
+
+    def search(patterns, cast=str, group=1):
+        for pat in patterns:
+            m = re.search(pat, t, re.IGNORECASE)
+            if m:
+                try:
+                    return cast(m.group(group).strip()), m.group(0).strip()
+                except Exception:
+                    continue
+        return None, None
+
+    found = {}
+
+    found["Age"] = search([
+        r"age\s*/\s*sex\s*[:\-]?\s*(\d{1,3})",
+        r"\bage\b\s*[:\-]?\s*(\d{1,3})\s*(?:yrs?|years?)?",
+    ], cast=int)
+
+    sex_val, sex_snip = search([
+        r"age\s*/\s*sex\s*[:\-]?\s*\d{1,3}\s*/\s*(male|female|m|f)\b",
+        r"\bsex\s*[:\-]?\s*(male|female|m|f)\b",
+        r"\bgender\s*[:\-]?\s*(male|female|m|f)\b",
+    ])
+    found["Sex"] = (("M" if sex_val.lower().startswith("m") else "F"), sex_snip) if sex_val else (None, None)
+
+    found["RestingBP"] = search([
+        r"blood\s*pressure\s*[:\-]?\s*(\d{2,3})\s*/\s*\d{2,3}",
+        r"\bbp\s*[:\-]?\s*(\d{2,3})\s*/\s*\d{2,3}",
+        r"resting\s*bp\s*[:\-]?\s*(\d{2,3})",
+    ], cast=int)
+
+    found["Cholesterol"] = search([
+        r"total\s*cholesterol\s*[:\-]?\s*(\d{2,4})",
+        r"s\.?\s*cholesterol\s*[:\-]?\s*(\d{2,4})",
+        r"\bcholesterol\s*[:\-]?\s*(\d{2,4})",
+    ], cast=int)
+
+    fbs_val, fbs_snip = search([
+        r"fasting\s*blood\s*sugar\s*[:\-]?\s*(\d{2,3})",
+        r"\bfbs\s*[:\-]?\s*(\d{2,3})",
+        r"fasting\s*glucose\s*[:\-]?\s*(\d{2,3})",
+    ], cast=int)
+    found["FastingBS"] = ((1 if fbs_val > 120 else 0, fbs_snip) if fbs_val is not None else (None, None))
+
+    found["MaxHR"] = search([
+        r"max(?:imum)?\s*heart\s*rate\s*(?:achieved)?\s*[:\-]?\s*(\d{2,3})",
+        r"peak\s*hr\s*[:\-]?\s*(\d{2,3})",
+        r"\bmhr\s*[:\-]?\s*(\d{2,3})",
+    ], cast=int)
+
+    ecg_val, ecg_snip = search([
+        r"resting\s*ecg\s*[:\-]?\s*(normal|abnormal|st[- ]?t|lvh|left ventricular hypertrophy)",
+        r"\becg\s*[:\-]?\s*(normal|abnormal|st[- ]?t|lvh|left ventricular hypertrophy)",
+    ])
+    if ecg_val:
+        v = ecg_val.lower()
+        norm = "Normal" if "normal" in v else ("LVH" if ("lvh" in v or "ventricular" in v) else "ST")
+        found["RestingECG"] = (norm, ecg_snip)
+    else:
+        found["RestingECG"] = (None, None)
+
+    ang_val, ang_snip = search([
+        r"exercise[- ]?induced\s*angina\s*[:\-]?\s*(yes|no|y|n)",
+        r"\bangina\s*[:\-]?\s*(yes|no|y|n)\b",
+    ])
+    found["ExerciseAngina"] = (("Y" if ang_val.lower().startswith("y") else "N", ang_snip) if ang_val else (None, None))
+
+    found["Oldpeak"] = search([
+        r"st\s*depression\s*[:\-]?\s*([\d.]+)",
+        r"\boldpeak\s*[:\-]?\s*([\d.]+)",
+    ], cast=float)
+
+    slope_val, slope_snip = search([
+        r"st\s*slope\s*[:\-]?\s*(up|flat|down|upsloping|downsloping)",
+    ])
+    if slope_val:
+        v = slope_val.lower()
+        norm = "Up" if "up" in v else ("Down" if "down" in v else "Flat")
+        found["ST_Slope"] = (norm, slope_snip)
+    else:
+        found["ST_Slope"] = (None, None)
+
+    cp_val, cp_snip = search([
+        r"chest\s*pain\s*(?:type)?\s*[:\-]?\s*(typical angina|atypical angina|non[- ]?anginal|asymptomatic|typical|atypical)",
+    ])
+    if cp_val:
+        v = cp_val.lower()
+        norm = "ATA" if "atypical" in v else ("NAP" if "non" in v else ("ASY" if "asymptomatic" in v else "TA"))
+        found["ChestPainType"] = (norm, cp_snip)
+    else:
+        found["ChestPainType"] = (None, None)
+
+    return found
+
 # ── SIDEBAR ─────────────────────────────────────────────
 with st.sidebar:
     st.markdown("""
@@ -1087,7 +1302,7 @@ elif "Risk" in page:
               "🟠  Extra Trees  ·  Accuracy 86.4%":et,
               "🩵  K-Nearest Neighbors  ·  Accuracy 89.1%":knn}[mdl_choice]
 
-    input_mode = st.radio("Input method", ["✍️  Manual Entry", "📁  Upload CSV (Batch)"], horizontal=True)
+    input_mode = st.radio("Input method", ["✍️  Manual Entry", "📁  Upload CSV (Batch)", "📄  Upload Report (PDF/Image)"], horizontal=True)
 
     st.markdown("<div style='height:0.5rem'></div>",unsafe_allow_html=True)
 
@@ -1156,70 +1371,7 @@ elif "Risk" in page:
 
                 pred=sel_mdl.predict(enc)[0]
                 prob=sel_mdl.predict_proba(enc)[0][1]
-                rp=prob*100; cp2=max(prob,1-prob)*100
-
-                if pred==1:
-                    # High risk — pulsing alert rings + warning icon
-                    rings_html = '<div class="alert-rings"><div class="alert-ring"></div><div class="alert-ring"></div><div class="alert-ring"></div></div>'
-                    icon_svg = '''<svg viewBox="0 0 24 24" fill="none"><path d="M12 9v4M12 16.5h.01M10.3 3.9L2.7 17.2c-.6 1 .1 2.3 1.3 2.3h16c1.2 0 1.9-1.3 1.3-2.3L13.7 3.9c-.6-1-2-1-2.6 0z"
-                      stroke="#fb7185" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>'''
-                    st.markdown(f"""<div class="result-stage">
-                      <div class="result-modal high">
-                        {rings_html}
-                        <div class="res-icon-wrap high">{icon_svg}</div>
-                        <div class="res-title high">High Risk</div>
-                        <div class="res-prob-line">Predicted probability: <strong>{rp:.1f}%</strong></div>
-                        <div class="res-sub" style="color:rgba(251,113,133,0.75)">⚕️ Please consult a cardiologist immediately</div>
-                      </div>
-                    </div>""",unsafe_allow_html=True)
-                else:
-                    # Low risk — confetti burst + checkmark icon
-                    import random
-                    random.seed(42+int(rp))
-                    pieces=[]
-                    colors_conf=["#34d399","#6ee7b7","#a7f3d0","#10b981","#fbbf24"]
-                    for i in range(26):
-                        dx=random.randint(-160,160); dy=random.randint(-140,40)
-                        rot=random.randint(-260,260); delay=round(random.uniform(0,0.25),2)
-                        c=random.choice(colors_conf)
-                        pieces.append(f'<span class="confetti" style="--dx:{dx}px;--dy:{dy}px;--rot:{rot}deg;'
-                                      f'background:{c};animation-delay:{delay}s;left:{50+random.randint(-8,8)}%"></span>')
-                    confetti_html = '<div class="confetti-wrap">'+''.join(pieces)+'</div>'
-                    icon_svg = '''<svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7"
-                      stroke="#34d399" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>'''
-                    st.markdown(f"""<div class="result-stage">
-                      <div class="result-modal low">
-                        {confetti_html}
-                        <div class="res-icon-wrap low">{icon_svg}</div>
-                        <div class="res-title low">Low Risk</div>
-                        <div class="res-prob-line">Predicted probability: <strong>{rp:.1f}%</strong></div>
-                        <div class="res-sub" style="color:rgba(52,211,153,0.75)">✅ Continue regular health checkups</div>
-                      </div>
-                    </div>""",unsafe_allow_html=True)
-
-                fc=P["red"] if pred==1 else P["green"]
-                st.markdown(f"""<div class="cbar-wrap">
-                  <div class="cbar-lbl">Model confidence</div>
-                  <div class="cbar-bg">
-                    <div class="cbar-fill-{'h' if pred==1 else 'l'}" style="--w:{cp2:.1f}%;width:{cp2:.1f}%"></div>
-                  </div>
-                  <div class="cbar-pct">{cp2:.1f}%</div>
-                </div>""",unsafe_allow_html=True)
-
-                fig,ax=plt.subplots(figsize=(4,3.2))
-                fig.patch.set_facecolor(P["bg"]); ax.set_facecolor(P["bg"])
-                th=np.linspace(0,np.pi,300)
-                ax.plot(np.cos(th),np.sin(th),color="#0f1524",lw=16,solid_capstyle="round")
-                th2=np.linspace(np.pi,np.pi*(1-prob),300)
-                ax.plot(np.cos(th2),np.sin(th2),color=fc,lw=16,solid_capstyle="round")
-                ax.plot(np.cos(th2),np.sin(th2),color=fc,lw=20,alpha=0.2,solid_capstyle="round")
-                ax.text(0,0.04,f"{rp:.1f}%",ha="center",va="center",
-                        fontsize=26,fontweight="900",color=fc)
-                ax.text(0,-0.26,"RISK SCORE",ha="center",color=P["t2"],fontsize=7.5,fontweight="700")
-                ax.text(-0.92,-0.1,"0%",ha="center",color=P["t3"],fontsize=7.5)
-                ax.text( 0.92,-0.1,"100%",ha="center",color=P["t3"],fontsize=7.5)
-                ax.set_xlim(-1.25,1.25); ax.set_ylim(-0.45,1.2); ax.axis("off")
-                fig.tight_layout(); st.pyplot(fig); plt.close()
+                render_prediction_result(pred, prob)
             else:
                 st.markdown("""<div class="idle-state">
                   <div class="idle-icon">🫀</div>
@@ -1231,7 +1383,7 @@ elif "Risk" in page:
 
         st.markdown('<div class="warn">⚠️ For educational purposes only — not a substitute for professional medical diagnosis.</div>',unsafe_allow_html=True)
 
-    else:
+    elif "CSV" in input_mode:
         # ══════════════════════════════════════════════════
         # CSV BATCH UPLOAD MODE
         # ══════════════════════════════════════════════════
@@ -1303,3 +1455,143 @@ elif "Risk" in page:
                                         file_name="heartsense_batch_results.csv", mime="text/csv")
 
         st.markdown('<div class="warn">⚠️ For educational purposes only — not a substitute for professional medical diagnosis.</div>',unsafe_allow_html=True)
+
+    else:
+        # ══════════════════════════════════════════════════
+        # HOSPITAL REPORT UPLOAD MODE (PDF / IMAGE)
+        # ══════════════════════════════════════════════════
+        if not REPORT_UPLOAD_OK:
+            st.markdown("""<div class="warn">⚠️ Report reading isn't available on this
+              deployment yet (missing PDF/OCR libraries). Please use Manual Entry or
+              CSV Upload instead.</div>""", unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <div class="upload-card">
+              <div class="upload-icon">📄</div>
+              <div style="font-size:1.05rem;font-weight:700;color:#fff;">Upload a hospital report</div>
+              <div class="template-hint">
+                Upload a PDF or photo of a lab report / cardiac stress test (TMT) report.<br>
+                We'll automatically read the values we can find — you can review and fix<br>
+                anything before predicting. General checkups usually don't include every<br>
+                field (e.g. ST slope, oldpeak); you can fill those in manually below.
+              </div>
+            </div>""", unsafe_allow_html=True)
+
+            st.markdown("<div style='height:0.9rem'></div>",unsafe_allow_html=True)
+            report_file = st.file_uploader("Upload report", type=["pdf","png","jpg","jpeg"],
+                                            label_visibility="collapsed")
+
+            file_key = None
+            if report_file is not None:
+                file_key = f"{report_file.name}_{report_file.size}"
+
+            if file_key and st.session_state.get("_report_key") != file_key:
+                with st.spinner("Reading report..."):
+                    try:
+                        raw_text, method = extract_text_from_file(report_file)
+                        extracted = extract_clinical_fields(raw_text)
+                    except Exception:
+                        raw_text, method, extracted = "", None, {}
+                st.session_state["_report_key"] = file_key
+                st.session_state["_report_method"] = method
+                st.session_state["_report_extracted"] = extracted
+                st.session_state["_report_text_len"] = len(raw_text.strip())
+
+            if file_key:
+                extracted = st.session_state.get("_report_extracted", {})
+                method = st.session_state.get("_report_method")
+                text_len = st.session_state.get("_report_text_len", 0)
+
+                if text_len < 15:
+                    st.markdown("""<div class="warn">⚠️ We couldn't read any text from
+                      that file. It may be a low-quality scan or unsupported format —
+                      try a clearer photo/PDF, or switch to Manual Entry.</div>""",
+                      unsafe_allow_html=True)
+                else:
+                    n_found = sum(1 for v,_ in extracted.values() if v is not None)
+                    st.markdown(f"""
+                    <div class="batch-summary">
+                      <div class="batch-chip"><div class="bc-num" style="color:#fff">{n_found}/11</div><div class="bc-lbl">Fields auto-filled</div></div>
+                      <div class="batch-chip"><div class="bc-num" style="color:#93c5fd;font-size:1rem;padding-top:6px">{method}</div><div class="bc-lbl">Extraction method</div></div>
+                    </div>""", unsafe_allow_html=True)
+                    st.caption("Review the values below — auto-filled fields are pre-populated, anything not found defaults to a typical value. Please verify everything before predicting.")
+
+                    def ev(field, default):
+                        val,_ = extracted.get(field,(None,None))
+                        return val if val is not None else default
+
+                    ra,rb,rc = st.columns([1,1,0.9], gap="large")
+                    with ra:
+                        st.markdown('<div class="ig"><span class="ig-icon">🧑</span>Demographics &amp; symptoms</div>',unsafe_allow_html=True)
+                        r_age = st.slider("Age",20,80,int(ev("Age",55)),key="r_age")
+                        r_sex_default = 1 if ev("Sex","F")=="M" else 0
+                        r_sex = st.selectbox("Sex",["Female (F)","Male (M)"],index=r_sex_default,key="r_sex")
+                        cp_map = {"ASY":0,"ATA":1,"NAP":2,"TA":3}
+                        cp_opts = ["ASY - Asymptomatic (most common high risk)","ATA - Atypical Angina",
+                                   "NAP - Non-Anginal Pain","TA - Typical Angina"]
+                        r_cp = st.selectbox("Chest pain type", cp_opts,
+                                             index=cp_map.get(ev("ChestPainType","ASY"),0), key="r_cp")
+                        r_trestbps = st.slider("Resting blood pressure (mm Hg)",80,200,int(ev("RestingBP",130)),key="r_bp")
+                        r_chol = st.slider("Cholesterol (mg/dl)",100,600,int(ev("Cholesterol",200)),key="r_chol")
+                        r_fbs = st.selectbox("Fasting blood sugar > 120 mg/dl",["No (0)","Yes (1)"],
+                                              index=int(ev("FastingBS",0)),key="r_fbs")
+                    with rb:
+                        st.markdown('<div class="ig"><span class="ig-icon">🩺</span>Cardiac measurements</div>',unsafe_allow_html=True)
+                        ecg_map = {"Normal":0,"LVH":1,"ST":2}
+                        r_restecg = st.selectbox("Resting ECG",
+                            ["Normal","LVH - Left Ventricular Hypertrophy","ST - ST-T Wave Abnormality"],
+                            index=ecg_map.get(ev("RestingECG","Normal"),0),key="r_ecg")
+                        r_thalach = st.slider("Max heart rate achieved",60,202,int(ev("MaxHR",140)),key="r_hr")
+                        ang_default = 1 if ev("ExerciseAngina","N")=="Y" else 0
+                        r_exang = st.selectbox("Exercise induced angina",["No (N)","Yes (Y)"],index=ang_default,key="r_ang")
+                        r_oldpeak = st.slider("Oldpeak (ST depression)",-2.6,6.2,float(ev("Oldpeak",0.0)),0.1,key="r_op")
+                        slope_map = {"Up":0,"Flat":1,"Down":2}
+                        r_slope = st.selectbox("ST slope",["Up - Upsloping","Flat","Down - Downsloping"],
+                                                index=slope_map.get(ev("ST_Slope","Flat"),1),key="r_slope")
+
+                    with rc:
+                        st.markdown('<div class="ig" style="margin-top:0"><span class="ig-icon">🔮</span>Result</div>',unsafe_allow_html=True)
+                        r_btn = st.button("🔮  Analyse patient risk", key="r_predict_btn")
+
+                        if r_btn:
+                            sex_val   = "M" if "Male" in r_sex else "F"
+                            cp_val    = r_cp.split(" - ")[0].strip()
+                            fbs_val   = int(r_fbs.split("(")[1][0])
+                            ecg_val   = r_restecg.split(" - ")[0].strip()
+                            exang_val = "Y" if "Yes" in r_exang else "N"
+                            slope_val = r_slope.split(" - ")[0].strip()
+
+                            enc = pd.DataFrame(0.0, index=[0], columns=Xtr.columns)
+                            enc["Age"]=float(r_age); enc["RestingBP"]=float(r_trestbps)
+                            enc["Cholesterol"]=float(r_chol); enc["FastingBS"]=float(fbs_val)
+                            enc["MaxHR"]=float(r_thalach); enc["Oldpeak"]=float(r_oldpeak)
+
+                            def set_ohe_r(col):
+                                if col in enc.columns: enc[col]=1.0
+                            set_ohe_r(f"Sex_{sex_val}"); set_ohe_r(f"ChestPainType_{cp_val}")
+                            set_ohe_r(f"RestingECG_{ecg_val}"); set_ohe_r(f"ExerciseAngina_{exang_val}")
+                            set_ohe_r(f"ST_Slope_{slope_val}")
+
+                            num_cols = ["Age","RestingBP","Cholesterol","FastingBS","MaxHR","Oldpeak"]
+                            enc[num_cols] = scaler.transform(enc[num_cols])
+
+                            pred=sel_mdl.predict(enc)[0]
+                            prob=sel_mdl.predict_proba(enc)[0][1]
+                            render_prediction_result(pred, prob)
+                        else:
+                            st.markdown("""<div class="idle-state">
+                              <div class="idle-icon">🫀</div>
+                              <div style="font-size:0.85rem;color:rgba(255,255,255,0.22);line-height:1.8">
+                                Review the values on the left<br>then click
+                                <strong style="color:rgba(255,255,255,0.4)">Analyse patient risk</strong>
+                              </div>
+                            </div>""",unsafe_allow_html=True)
+            else:
+                st.markdown("""<div class="idle-state">
+                  <div class="idle-icon">📄</div>
+                  <div style="font-size:0.85rem;color:rgba(255,255,255,0.22);line-height:1.8">
+                    Upload a PDF or image report above<br>to auto-fill the risk form
+                  </div>
+                </div>""",unsafe_allow_html=True)
+
+        st.markdown('<div class="warn">⚠️ For educational purposes only — not a substitute for professional medical diagnosis. Always verify auto-extracted values before use.</div>',unsafe_allow_html=True)
