@@ -905,97 +905,108 @@ def extract_text_from_file(uploaded_file):
 
 def extract_clinical_fields(text):
     """Parses free-text hospital report content and returns a dict of
-    field -> (value, matched_snippet). Value is None if not found."""
+    field -> (value, matched_snippet). Value is None if not found.
+    Uses a 'find label, then look in a window of following text for the
+    value' strategy so it tolerates icons, line breaks, and stray OCR
+    characters sitting between a label and its value in real-world,
+    multi-column report layouts."""
     t = text
 
-    def search(patterns, cast=str, group=1):
-        for pat in patterns:
-            m = re.search(pat, t, re.IGNORECASE)
-            if m:
-                try:
-                    return cast(m.group(group).strip()), m.group(0).strip()
-                except Exception:
-                    continue
+    def window_search(label_patterns, value_pattern, window=60, cast=str, flags=re.IGNORECASE):
+        for lp in label_patterns:
+            for lm in re.finditer(lp, t, flags):
+                chunk = t[lm.end():lm.end()+window]
+                vm = re.search(value_pattern, chunk, flags)
+                if vm:
+                    try:
+                        return cast(vm.group(1).strip()), (lm.group(0)+" ... "+vm.group(0)).strip()
+                    except Exception:
+                        continue
         return None, None
 
     found = {}
 
-    found["Age"] = search([
-        r"age\s*/\s*sex\s*[:\-]?\s*(\d{1,3})",
-        r"\bage\b\s*[:\-]?\s*(\d{1,3})\s*(?:yrs?|years?)?",
-    ], cast=int)
+    # AGE — label-based, plus a standalone "(NN years)" fallback anywhere
+    found["Age"] = window_search([r"\bage\b", r"age\s*/\s*sex"], r"(\d{1,3})", window=25, cast=int)
+    if found["Age"][0] is None:
+        m = re.search(r"\(\s*(\d{1,3})\s*years?\s*\)", t, re.IGNORECASE)
+        if m:
+            found["Age"] = (int(m.group(1)), m.group(0))
 
-    sex_val, sex_snip = search([
-        r"age\s*/\s*sex\s*[:\-]?\s*\d{1,3}\s*/\s*(male|female|m|f)\b",
-        r"\bsex\s*[:\-]?\s*(male|female|m|f)\b",
-        r"\bgender\s*[:\-]?\s*(male|female|m|f)\b",
-    ])
-    found["Sex"] = (("M" if sex_val.lower().startswith("m") else "F"), sex_snip) if sex_val else (None, None)
+    # SEX
+    sv, ss = window_search([r"age\s*/\s*sex\s*[:\-]?\s*\d{1,3}\s*/", r"\bsex\b", r"\bgender\b"],
+                            r"(male|female|\bm\b|\bf\b)", window=15)
+    found["Sex"] = (("M" if sv and sv.lower().startswith("m") else "F"), ss) if sv else (None, None)
 
-    found["RestingBP"] = search([
-        r"blood\s*pressure\s*[:\-]?\s*(\d{2,3})\s*/\s*\d{2,3}",
-        r"\bbp\s*[:\-]?\s*(\d{2,3})\s*/\s*\d{2,3}",
-        r"resting\s*bp\s*[:\-]?\s*(\d{2,3})",
-    ], cast=int)
+    # RESTING BLOOD PRESSURE (with or without diastolic slash)
+    found["RestingBP"] = window_search(
+        [r"resting\s*blood\s*pressure", r"blood\s*pressure", r"\bbp\b", r"resting\s*bp"],
+        r"(\d{2,3})\s*(?:/\s*\d{2,3})?\s*mm\s*hg", window=30, cast=int)
 
-    found["Cholesterol"] = search([
-        r"total\s*cholesterol\s*[:\-]?\s*(\d{2,4})",
-        r"s\.?\s*cholesterol\s*[:\-]?\s*(\d{2,4})",
-        r"\bcholesterol\s*[:\-]?\s*(\d{2,4})",
-    ], cast=int)
+    # CHOLESTEROL — tolerates minor OCR corruption of the word itself
+    found["Cholesterol"] = window_search(
+        [r"total\s*cholesterol", r"s\.?\s*cholesterol", r"\bcholesterol\b"],
+        r"(\d{2,4})", window=25, cast=int)
 
-    fbs_val, fbs_snip = search([
-        r"fasting\s*blood\s*sugar\s*[:\-]?\s*(\d{2,3})",
-        r"\bfbs\s*[:\-]?\s*(\d{2,3})",
-        r"fasting\s*glucose\s*[:\-]?\s*(\d{2,3})",
-    ], cast=int)
-    found["FastingBS"] = ((1 if fbs_val > 120 else 0, fbs_snip) if fbs_val is not None else (None, None))
+    # FASTING BLOOD SUGAR — "No (0)" / "Yes (1)" format, or a raw glucose number
+    fbs_v, fbs_s = window_search([r"fasting\s*blood\s*sugar", r"\bfbs\b", r"fasting\s*glucose"],
+                                  r"(no|yes)\s*\(\s*[01]\s*\)", window=40)
+    if fbs_v:
+        found["FastingBS"] = (1 if fbs_v.lower()=="yes" else 0, fbs_s)
+    else:
+        raw, snip = window_search([r"fasting\s*blood\s*sugar", r"\bfbs\b", r"fasting\s*glucose"],
+                                   r"(\d{2,3})", window=25, cast=int)
+        found["FastingBS"] = ((1 if raw>120 else 0, snip) if raw is not None else (None, None))
 
-    found["MaxHR"] = search([
-        r"max(?:imum)?\s*heart\s*rate\s*(?:achieved)?\s*[:\-]?\s*(\d{2,3})",
-        r"peak\s*hr\s*[:\-]?\s*(\d{2,3})",
-        r"\bmhr\s*[:\-]?\s*(\d{2,3})",
-    ], cast=int)
+    # MAX HEART RATE — unit-anchored on "bpm" first so it can't grab a
+    # neighbouring column's number (e.g. Cholesterol) in dense layouts;
+    # falls back to a bare number only if no "bpm" unit is present.
+    found["MaxHR"] = window_search(
+        [r"max(?:imum)?\s*heart\s*rate(?:\s*achieved)?", r"peak\s*hr", r"\bmhr\b"],
+        r"(\d{2,3})\s*bpm", window=70, cast=int)
+    if found["MaxHR"][0] is None:
+        found["MaxHR"] = window_search(
+            [r"max(?:imum)?\s*heart\s*rate(?:\s*achieved)?", r"peak\s*hr", r"\bmhr\b"],
+            r"(\d{2,3})", window=25, cast=int)
 
-    ecg_val, ecg_snip = search([
-        r"resting\s*ecg\s*[:\-]?\s*(normal|abnormal|st[- ]?t|lvh|left ventricular hypertrophy)",
-        r"\becg\s*[:\-]?\s*(normal|abnormal|st[- ]?t|lvh|left ventricular hypertrophy)",
-    ])
-    if ecg_val:
-        v = ecg_val.lower()
-        norm = "Normal" if "normal" in v else ("LVH" if ("lvh" in v or "ventricular" in v) else "ST")
-        found["RestingECG"] = (norm, ecg_snip)
+    # RESTING ECG
+    ev, esn = window_search([r"resting\s*ecg", r"\becg\b"],
+                             r"(normal|abnormal|st[- ]?t|lvh|left ventricular hypertrophy)", window=25)
+    if ev:
+        v = ev.lower()
+        found["RestingECG"] = (("Normal" if "normal" in v else ("LVH" if ("lvh" in v or "ventricular" in v) else "ST")), esn)
     else:
         found["RestingECG"] = (None, None)
 
-    ang_val, ang_snip = search([
-        r"exercise[- ]?induced\s*angina\s*[:\-]?\s*(yes|no|y|n)",
-        r"\bangina\s*[:\-]?\s*(yes|no|y|n)\b",
-    ])
-    found["ExerciseAngina"] = (("Y" if ang_val.lower().startswith("y") else "N", ang_snip) if ang_val else (None, None))
+    # EXERCISE INDUCED ANGINA
+    av, asn = window_search([r"exercise[- ]?induced\s*angina", r"\bangina\b"],
+                             r"\b(yes|no|y|n)\b", window=15)
+    found["ExerciseAngina"] = (("Y" if av and av.lower().startswith("y") else "N"), asn) if av else (None, None)
 
-    found["Oldpeak"] = search([
-        r"st\s*depression\s*[:\-]?\s*([\d.]+)",
-        r"\boldpeak\s*[:\-]?\s*([\d.]+)",
-    ], cast=float)
+    # OLDPEAK / ST DEPRESSION
+    found["Oldpeak"] = window_search(
+        [r"st\s*depression\s*\(?\s*oldpeak\s*\)?", r"st\s*depression", r"\boldpeak\b"],
+        r"([\d]+\.?[\d]*)", window=30, cast=float)
 
-    slope_val, slope_snip = search([
-        r"st\s*slope\s*[:\-]?\s*(up|flat|down|upsloping|downsloping)",
-    ])
-    if slope_val:
-        v = slope_val.lower()
-        norm = "Up" if "up" in v else ("Down" if "down" in v else "Flat")
-        found["ST_Slope"] = (norm, slope_snip)
+    # ST SLOPE
+    slv, slsn = window_search([r"\bst\s*slope\b"], r"(up|flat|down|upsloping|downsloping)", window=20)
+    if slv:
+        v = slv.lower()
+        found["ST_Slope"] = (("Up" if "up" in v else ("Down" if "down" in v else "Flat")), slsn)
     else:
         found["ST_Slope"] = (None, None)
 
-    cp_val, cp_snip = search([
-        r"chest\s*pain\s*(?:type)?\s*[:\-]?\s*(typical angina|atypical angina|non[- ]?anginal|asymptomatic|typical|atypical)",
-    ])
-    if cp_val:
-        v = cp_val.lower()
-        norm = "ATA" if "atypical" in v else ("NAP" if "non" in v else ("ASY" if "asymptomatic" in v else "TA"))
-        found["ChestPainType"] = (norm, cp_snip)
+    # CHEST PAIN TYPE — accepts short codes (ASY/ATA/NAP/TA) or full descriptive words
+    cpv, cpsn = window_search([r"chest\s*pain\s*type", r"chest\s*pain"],
+        r"(asy|ata|nap|\bta\b|typical angina|atypical angina|non[- ]?anginal|asymptomatic|typical|atypical)",
+        window=30)
+    if cpv:
+        v = cpv.lower()
+        if v=="asy" or "asymptomatic" in v: norm="ASY"
+        elif v=="ata" or "atypical" in v: norm="ATA"
+        elif v=="nap" or "non" in v: norm="NAP"
+        else: norm="TA"
+        found["ChestPainType"] = (norm, cpsn)
     else:
         found["ChestPainType"] = (None, None)
 
