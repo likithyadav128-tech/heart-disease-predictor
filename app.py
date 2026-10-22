@@ -1,11 +1,24 @@
 # ============================================================
-# HEARTSENSE AI — ULTRA PREMIUM UI v4
+# HEARTSENSE AI — ULTRA PREMIUM UI v5  (SHAP + PDF + History)
 # ============================================================
 import streamlit as st, pandas as pd, numpy as np, pickle
 import matplotlib.pyplot as plt, seaborn as sns, warnings
 from sklearn.metrics import roc_curve, roc_auc_score, confusion_matrix
 import matplotlib.patches as mpatches
-import re
+import re, json, os, io, base64
+from datetime import datetime
+
+try:
+    import shap
+    SHAP_OK = True
+except ImportError:
+    SHAP_OK = False
+
+try:
+    from fpdf import FPDF
+    FPDF_OK = True
+except ImportError:
+    FPDF_OK = False
 
 try:
     import pdfplumber
@@ -634,6 +647,114 @@ body,html,[class*="css"]{font-family:'Inter',sans-serif!important;-webkit-font-s
 }
 .risk-pill.high{ background:rgba(225,29,72,0.14); color:#fb7185; border:1px solid rgba(225,29,72,0.28); }
 .risk-pill.low{ background:rgba(16,185,129,0.12); color:#34d399; border:1px solid rgba(16,185,129,0.25); }
+
+/* ══════════════════════════════════════════════════════════
+   SHAP EXPLANATION WATERFALL
+   ══════════════════════════════════════════════════════════ */
+.shap-section{
+  margin-top:1.5rem; padding:1.5rem 1.6rem;
+  background:var(--card); border:1px solid var(--border); border-radius:var(--r);
+  animation:fadeUp 0.5s var(--ease2) both;
+}
+.shap-title{
+  font-family:'Poppins',sans-serif; font-size:1.1rem; font-weight:700;
+  color:#fff; margin-bottom:0.3rem;
+}
+.shap-sub{
+  font-size:0.78rem; color:var(--t3); margin-bottom:1.2rem;
+}
+.shap-bar-row{
+  display:flex; align-items:center; gap:10px; padding:0.35rem 0;
+  border-bottom:1px solid rgba(255,255,255,0.03);
+  animation:fadeLeft 0.4s var(--ease2) both;
+}
+.shap-bar-row:last-child{ border-bottom:none; }
+.shap-feat-name{
+  min-width:180px; font-size:0.8rem; font-weight:600;
+  color:var(--t2); text-align:right;
+}
+.shap-bar-wrap{
+  flex:1; height:22px; position:relative;
+  display:flex; align-items:center;
+}
+.shap-bar{
+  height:18px; border-radius:6px; position:absolute;
+  transition:width 0.6s var(--ease2);
+  min-width:2px;
+}
+.shap-bar.pos{
+  left:50%; background:linear-gradient(90deg, rgba(225,29,72,0.7), #e11d48);
+  border:1px solid rgba(225,29,72,0.4);
+}
+.shap-bar.neg{
+  right:50%; background:linear-gradient(90deg, #10b981, rgba(16,185,129,0.7));
+  border:1px solid rgba(16,185,129,0.4);
+}
+.shap-center-line{
+  position:absolute; left:50%; top:0; bottom:0; width:1px;
+  background:rgba(255,255,255,0.12);
+}
+.shap-val{
+  font-size:0.72rem; font-weight:700; min-width:55px;
+  font-variant-numeric:tabular-nums;
+}
+.shap-val.pos{ color:#fb7185; }
+.shap-val.neg{ color:#34d399; }
+
+/* ══════════════════════════════════════════════════════════
+   PDF DOWNLOAD BUTTON
+   ══════════════════════════════════════════════════════════ */
+.pdf-btn-wrap{
+  margin-top:1.2rem;
+  animation:fadeUp 0.4s var(--ease2) 0.3s both;
+}
+
+/* ══════════════════════════════════════════════════════════
+   RISK HISTORY TRACKER
+   ══════════════════════════════════════════════════════════ */
+.history-card{
+  background:var(--card); border:1px solid var(--border); border-radius:var(--r);
+  padding:1.5rem 1.6rem; margin-top:1.5rem;
+  animation:fadeUp 0.5s var(--ease2) both;
+}
+.history-title{
+  font-family:'Poppins',sans-serif; font-size:1.1rem; font-weight:700;
+  color:#fff; margin-bottom:0.2rem;
+}
+.history-sub{
+  font-size:0.78rem; color:var(--t3); margin-bottom:1rem;
+}
+.history-empty{
+  text-align:center; padding:2rem 1rem;
+  color:var(--t4); font-size:0.85rem;
+}
+.history-empty-icon{
+  font-size:2rem; margin-bottom:0.5rem; opacity:0.3;
+}
+.history-entry{
+  display:flex; justify-content:space-between; align-items:center;
+  padding:0.55rem 0.8rem; margin-bottom:4px;
+  border-radius:var(--r3); background:rgba(255,255,255,0.02);
+  border:1px solid rgba(255,255,255,0.04);
+  transition:all 0.2s var(--ease2);
+  animation:fadeRight 0.3s var(--ease2) both;
+}
+.history-entry:hover{
+  background:rgba(255,255,255,0.05); border-color:rgba(225,29,72,0.2);
+  transform:translateX(-3px);
+}
+.history-name{
+  font-size:0.85rem; font-weight:600; color:var(--t2);
+}
+.history-date{
+  font-size:0.7rem; color:var(--t4);
+}
+.history-score{
+  font-size:0.88rem; font-weight:800; font-variant-numeric:tabular-nums;
+}
+.history-save-form{
+  display:flex; gap:8px; align-items:flex-end; margin-top:0.8rem;
+}
 </style>
 
 <!-- ORBS -->
@@ -867,6 +988,379 @@ def render_prediction_result(pred, prob):
     ax.text( 0.92,-0.1,"100%",ha="center",color=P["t3"],fontsize=7.5)
     ax.set_xlim(-1.25,1.25); ax.set_ylim(-0.45,1.2); ax.axis("off")
     fig.tight_layout(); st.pyplot(fig); plt.close()
+
+# ── SHAP EXPLAINABILITY ──────────────────────────────────
+FEATURE_DISPLAY_NAMES = {
+    "Age": "Age", "RestingBP": "Resting BP", "Cholesterol": "Cholesterol",
+    "FastingBS": "Fasting Blood Sugar >120", "MaxHR": "Max Heart Rate",
+    "Oldpeak": "ST Depression (Oldpeak)",
+    "Sex_F": "Sex: Female", "Sex_M": "Sex: Male",
+    "ChestPainType_ASY": "Chest Pain: Asymptomatic",
+    "ChestPainType_ATA": "Chest Pain: Atypical Angina",
+    "ChestPainType_NAP": "Chest Pain: Non-Anginal",
+    "ChestPainType_TA": "Chest Pain: Typical Angina",
+    "RestingECG_LVH": "ECG: Left Ventricular Hypertrophy",
+    "RestingECG_Normal": "ECG: Normal",
+    "RestingECG_ST": "ECG: ST-T Abnormality",
+    "ExerciseAngina_N": "Exercise Angina: No",
+    "ExerciseAngina_Y": "Exercise Angina: Yes",
+    "ST_Slope_Down": "ST Slope: Downsloping",
+    "ST_Slope_Flat": "ST Slope: Flat",
+    "ST_Slope_Up": "ST Slope: Upsloping",
+}
+
+@st.cache_resource
+def get_shap_explainer(_model, _Xtr):
+    """Create a SHAP explainer (cached). Supports Tree, Linear, and Kernel explainers."""
+    if not SHAP_OK:
+        return None
+    try:
+        return shap.TreeExplainer(_model)
+    except Exception:
+        try:
+            return shap.LinearExplainer(_model, _Xtr)
+        except Exception:
+            try:
+                bg = shap.sample(_Xtr, 25)
+                return shap.KernelExplainer(_model.predict_proba, bg)
+            except Exception:
+                return None
+
+def compute_shap_values(explainer, enc_row):
+    """Compute SHAP values for a single encoded row. Returns (feature_names, shap_vals) sorted by |impact|."""
+    if explainer is None:
+        return None, None
+    try:
+        sv = explainer.shap_values(enc_row)
+        if isinstance(sv, list):
+            vals = sv[1][0] if len(sv) > 1 else sv[0][0]
+        elif isinstance(sv, np.ndarray):
+            if sv.ndim == 3:
+                vals = sv[0, :, 1]
+            elif sv.ndim == 2:
+                vals = sv[0]
+            else:
+                vals = sv
+        else:
+            vals = np.array(sv).flatten()
+        cols = list(enc_row.columns)
+        paired = list(zip(cols, vals))
+        paired.sort(key=lambda x: abs(float(x[1])), reverse=True)
+        names = [FEATURE_DISPLAY_NAMES.get(c, c) for c, _ in paired]
+        values = [float(v) for _, v in paired]
+        return names, values
+    except Exception:
+        return None, None
+
+def render_shap_explanation(feat_names, shap_vals, top_n=10):
+    """Render a beautiful horizontal SHAP waterfall bar chart in HTML with clinical takeaways."""
+    if feat_names is None or shap_vals is None:
+        return
+    display = list(zip(feat_names[:top_n], shap_vals[:top_n]))
+    max_abs = max(abs(v) for _, v in display) if display else 1.0
+
+    st.markdown("""<div class="shap-section">
+      <div class="shap-title">🧠 Explainable AI (SHAP) — Why This Risk Score?</div>
+      <div class="shap-sub">Exact contribution of each clinical metric towards this patient's prediction. Red bars pushed the risk higher; green bars pushed it lower.</div>""",
+      unsafe_allow_html=True)
+
+    pos_drivers = []
+    neg_drivers = []
+
+    for i, (name, val) in enumerate(display):
+        pct_width = min(abs(val) / max_abs * 45, 45)
+        cls = "pos" if val > 0 else "neg"
+        sign = "+" if val > 0 else ""
+        pct_label = f"{sign}{val*100:.1f}%"
+        delay = f"animation-delay:{i*0.04:.2f}s"
+        st.markdown(f"""<div class="shap-bar-row" style="{delay}">
+          <div class="shap-feat-name">{name}</div>
+          <div class="shap-bar-wrap">
+            <div class="shap-center-line"></div>
+            <div class="shap-bar {cls}" style="width:{pct_width}%"></div>
+          </div>
+          <div class="shap-val {cls}">{pct_label}</div>
+        </div>""", unsafe_allow_html=True)
+
+        if val > 0 and len(pos_drivers) < 3:
+            pos_drivers.append((name, f"+{val*100:.1f}%"))
+        elif val < 0 and len(neg_drivers) < 2:
+            neg_drivers.append((name, f"{val*100:.1f}%"))
+
+    # Clinical takeaway summary box
+    summary_html = '<div style="margin-top:1.2rem;padding:0.9rem 1.1rem;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:12px;font-size:0.8rem;line-height:1.6;">'
+    summary_html += '<strong style="color:#fff;display:block;margin-bottom:6px;">🩺 Clinical Factor Summary:</strong>'
+    if pos_drivers:
+        summary_html += '<span style="color:#fb7185;font-weight:600;">Top Risk Drivers: </span>'
+        summary_html += ' · '.join([f'<span style="color:rgba(255,255,255,0.85)">{n}</span> (<strong style="color:#fb7185">{v}</strong>)' for n, v in pos_drivers])
+        summary_html += '<br>'
+    if neg_drivers:
+        summary_html += '<span style="color:#34d399;font-weight:600;">Protective Factors: </span>'
+        summary_html += ' · '.join([f'<span style="color:rgba(255,255,255,0.85)">{n}</span> (<strong style="color:#34d399">{v}</strong>)' for n, v in neg_drivers])
+    summary_html += '</div>'
+    st.markdown(summary_html, unsafe_allow_html=True)
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# ── PDF REPORT GENERATION ─────────────────────────────────
+def generate_pdf_report(patient_vals, pred, prob, model_name, feat_names=None, shap_vals=None, patient_name="Anonymous Patient"):
+    """Generate a clean clinical-style PDF report with embedded gauge chart and return bytes."""
+    if not FPDF_OK:
+        return None
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+
+    # 1. Header Banner
+    pdf.set_fill_color(225, 29, 72)
+    pdf.rect(0, 0, 210, 32, 'F')
+    pdf.set_font('Helvetica', 'B', 20)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_y(6)
+    pdf.cell(0, 8, 'HeartSense AI - Clinical Risk Report', align='C', new_x='LMARGIN', new_y='NEXT')
+    pdf.set_font('Helvetica', '', 9)
+    pdf.cell(0, 5, 'Cardiovascular Risk & Explainability Analysis', align='C', new_x='LMARGIN', new_y='NEXT')
+    pdf.set_font('Helvetica', 'I', 8)
+    now_str = datetime.now().strftime('%B %d, %Y at %I:%M %p')
+    clean_pname = str(patient_name).replace('\n', ' ').strip()
+    pdf.cell(0, 4, f'Patient: {clean_pname}  |  Generated: {now_str}', align='C', new_x='LMARGIN', new_y='NEXT')
+
+    pdf.set_y(36)
+
+    # 2. Risk Gauge Chart Image
+    fig, ax = plt.subplots(figsize=(3.8, 1.9), facecolor='white')
+    ax.set_facecolor('white')
+    th = np.linspace(0, np.pi, 300)
+    ax.plot(np.cos(th), np.sin(th), color='#e2e8f0', lw=12, solid_capstyle='round')
+    fc = '#e11d48' if pred == 1 else '#10b981'
+    th2 = np.linspace(np.pi, np.pi*(1-prob), 300)
+    ax.plot(np.cos(th2), np.sin(th2), color=fc, lw=12, solid_capstyle='round')
+    ax.text(0, 0.05, f'{prob*100:.1f}%', ha='center', va='center', fontsize=20, fontweight='bold', color=fc)
+    ax.text(0, -0.22, 'RISK SCORE', ha='center', color='#64748b', fontsize=8, fontweight='bold')
+    ax.set_xlim(-1.25, 1.25); ax.set_ylim(-0.35, 1.15); ax.axis('off')
+    fig.tight_layout()
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+    buf.seek(0)
+    plt.close(fig)
+
+    pdf.image(buf, x=75, y=36, w=60)
+    pdf.set_y(73)
+
+    # 3. Assessment Summary Box
+    risk_label = 'HIGH CARDIOVASCULAR RISK' if pred == 1 else 'LOW CARDIOVASCULAR RISK'
+    if pred == 1:
+        pdf.set_fill_color(254, 226, 226); pdf.set_text_color(190, 18, 60)
+    else:
+        pdf.set_fill_color(209, 250, 229); pdf.set_text_color(5, 150, 105)
+    pdf.set_font('Helvetica', 'B', 14)
+    pdf.cell(0, 10, f'  {risk_label}  (Probability: {prob*100:.1f}%)', align='C', fill=True, new_x='LMARGIN', new_y='NEXT')
+
+    pdf.ln(2)
+    pdf.set_font('Helvetica', '', 8.5)
+    pdf.set_text_color(100, 100, 100)
+    rec = 'Recommendation: Immediate clinical evaluation by a cardiologist is advised.' if pred == 1 else 'Recommendation: Maintain regular health checkups and cardiovascular wellness.'
+    pdf.cell(0, 5, f'Evaluation Model: {model_name}  |  Confidence: {max(prob, 1-prob)*100:.1f}%', align='C', new_x='LMARGIN', new_y='NEXT')
+    pdf.cell(0, 4, rec, align='C', new_x='LMARGIN', new_y='NEXT')
+
+    pdf.ln(4)
+
+    # 4. Clinical Parameters Table
+    pdf.set_text_color(30, 41, 59)
+    pdf.set_font('Helvetica', 'B', 11)
+    pdf.cell(0, 6, '1. Patient Clinical Metrics (11 Parameters)', new_x='LMARGIN', new_y='NEXT')
+    pdf.set_draw_color(225, 29, 72)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(2)
+
+    pdf.set_font('Helvetica', 'B', 8)
+    pdf.set_fill_color(241, 245, 249)
+    pdf.cell(95, 6, '  Parameter', border=1, fill=True)
+    pdf.cell(95, 6, '  Measured Value', border=1, fill=True, new_x='LMARGIN', new_y='NEXT')
+
+    pdf.set_font('Helvetica', '', 8)
+    for key, val in patient_vals.items():
+        pdf.cell(95, 5.5, f'  {key}', border=1)
+        pdf.cell(95, 5.5, f'  {val}', border=1, new_x='LMARGIN', new_y='NEXT')
+
+    pdf.ln(4)
+
+    # 5. SHAP Explainability
+    if feat_names and shap_vals:
+        pdf.set_text_color(30, 41, 59)
+        pdf.set_font('Helvetica', 'B', 11)
+        pdf.cell(0, 6, '2. Explainable AI Analysis (SHAP Feature Contributions)', new_x='LMARGIN', new_y='NEXT')
+        pdf.set_draw_color(225, 29, 72)
+        pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+        pdf.ln(2)
+
+        pdf.set_font('Helvetica', 'B', 8)
+        pdf.set_fill_color(241, 245, 249)
+        pdf.cell(85, 6, '  Clinical Feature', border=1, fill=True)
+        pdf.cell(35, 6, '  SHAP Score', border=1, fill=True)
+        pdf.cell(70, 6, '  Directional Impact', border=1, fill=True, new_x='LMARGIN', new_y='NEXT')
+
+        pdf.set_font('Helvetica', '', 8)
+        for name, val in zip(feat_names[:10], shap_vals[:10]):
+            direction = '+ Increases Disease Risk' if val > 0 else '- Lowers Disease Risk (Protective)'
+            sign = '+' if val > 0 else ''
+            pct = f'({sign}{val*100:.1f}%)'
+            pdf.cell(85, 5.2, f'  {name}', border=1)
+            pdf.cell(35, 5.2, f'  {sign}{val:.4f} {pct}', border=1)
+            pdf.cell(70, 5.2, f'  {direction}', border=1, new_x='LMARGIN', new_y='NEXT')
+
+    # 6. Disclaimer & Doctor Signature
+    pdf.ln(5)
+    pdf.set_font('Helvetica', 'I', 7.5)
+    pdf.set_text_color(148, 163, 184)
+    pdf.multi_cell(0, 3.5, 'CONFIDENTIAL MEDICAL AI SUMMARY: This document was algorithmically compiled by HeartSense AI for clinical decision support. Interpreted alongside clinical evaluation by a licensed physician.')
+
+    pdf.ln(4)
+    pdf.set_font('Helvetica', '', 8)
+    pdf.set_text_color(100, 100, 100)
+    pdf.cell(100, 5, 'Attending Clinician Signature: __________________________', align='L')
+    pdf.cell(90, 5, 'Date: ____________________', align='R', new_x='LMARGIN', new_y='NEXT')
+
+    return bytes(pdf.output())
+
+# ── RISK HISTORY TRACKING ─────────────────────────────────
+HISTORY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "risk_history.json")
+
+def load_risk_history():
+    """Load risk history from JSON file."""
+    if os.path.exists(HISTORY_FILE):
+        try:
+            with open(HISTORY_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            return []
+    return []
+
+def save_risk_history(history):
+    """Save risk history to JSON file."""
+    try:
+        with open(HISTORY_FILE, "w") as f:
+            json.dump(history, f, indent=2)
+    except Exception:
+        pass
+
+def add_risk_entry(name, prob, pred, model_name, patient_vals):
+    """Add a new entry to risk history."""
+    history = load_risk_history()
+    entry = {
+        "name": name,
+        "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "probability": round(prob * 100, 1),
+        "prediction": "High Risk" if pred == 1 else "Low Risk",
+        "model": model_name,
+        "patient_vals": patient_vals,
+    }
+    history.append(entry)
+    if len(history) > 100:
+        history = history[-100:]
+    save_risk_history(history)
+    return entry
+
+def render_risk_history_chart():
+    """Render risk history line chart, trend metrics, patient filtering, and entry list."""
+    history = load_risk_history()
+
+    st.markdown("""<div class="history-card">
+      <div class="history-title">📈 Longitudinal Risk History Tracker</div>
+      <div class="history-sub">Track cardiovascular risk scores across patient visits over time — see how lifestyle, medications, and clinical interventions change risk trajectories.</div>""",
+      unsafe_allow_html=True)
+
+    if not history:
+        st.markdown("""<div class="history-empty">
+          <div class="history-empty-icon">📋</div>
+          No predictions saved yet. Complete a risk assessment and click <strong>Save to Risk History</strong> to start tracking visits over time!
+        </div></div>""", unsafe_allow_html=True)
+        return
+
+    hist_df = pd.DataFrame(history)
+    hist_df["date_parsed"] = pd.to_datetime(hist_df["date"])
+
+    unique_names = list(hist_df["name"].unique())
+    col_filter, col_dl = st.columns([0.65, 0.35])
+
+    with col_filter:
+        filter_opts = ["All Patients (" + str(len(unique_names)) + ")"] + sorted(unique_names)
+        sel_filter = st.selectbox("Select Patient to Track", filter_opts, key="hist_patient_filter")
+
+    with col_dl:
+        csv_data = hist_df[["name", "date", "probability", "prediction", "model"]].to_csv(index=False).encode("utf-8")
+        st.download_button("⬇️  Export History (CSV)", data=csv_data, file_name="heartsense_risk_history.csv", mime="text/csv", use_container_width=True)
+
+    # Patient trend statistics if specific patient selected
+    if sel_filter and not sel_filter.startswith("All Patients"):
+        p_data = hist_df[hist_df["name"] == sel_filter].sort_values("date_parsed")
+        first_prob = p_data.iloc[0]["probability"]
+        latest_prob = p_data.iloc[-1]["probability"]
+        delta = latest_prob - first_prob
+        visits_count = len(p_data)
+
+        t_col1, t_col2, t_col3, t_col4 = st.columns(4)
+        with t_col1:
+            st.metric("Total Recorded Visits", f"{visits_count}")
+        with t_col2:
+            st.metric("Initial Risk", f"{first_prob:.1f}%")
+        with t_col3:
+            st.metric("Latest Risk", f"{latest_prob:.1f}%")
+        with t_col4:
+            delta_str = f"{delta:+.1f}%"
+            st.metric("Net Risk Trend", f"{delta_str}", delta=f"{delta:.1f}%", delta_color="inverse")
+
+    # Matplotlib line chart
+    fig, ax = dark_fig(8.5, 3.8)
+    colors_cycle = ["#e11d48", "#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#06b6d4", "#ec4899", "#14b8a6"]
+
+    if sel_filter and not sel_filter.startswith("All Patients"):
+        plot_names = [sel_filter]
+    else:
+        plot_names = unique_names[:8]
+
+    for i, pname in enumerate(plot_names):
+        subset = hist_df[hist_df["name"] == pname].sort_values("date_parsed")
+        c = colors_cycle[i % len(colors_cycle)]
+        ax.plot(subset["date_parsed"], subset["probability"], "o-", color=c,
+                label=pname, lw=2.8, markersize=8, markeredgecolor="#fff", markeredgewidth=1.2)
+        for _, row in subset.iterrows():
+            ax.annotate(f"{row['probability']:.0f}%", (row["date_parsed"], row["probability"]),
+                        textcoords="offset points", xytext=(0, 9), ha="center",
+                        fontsize=7.5, color=c, fontweight="bold")
+
+    ax.axhline(y=50, color="rgba(255,255,255,0.2)", ls="--", lw=1.2)
+    ax.text(ax.get_xlim()[0], 52, " 50% Clinical Risk Threshold", va="bottom", color=P["t3"], fontsize=7.5, fontweight="600")
+    ax.set_ylim(-5, 105)
+    ax.set_ylabel("Risk Probability %", color=P["t2"], fontsize=8.5)
+    ax.set_title("Longitudinal Patient Risk Trend", color="#e2e8f0", fontsize=11, fontweight="700", pad=12)
+    ax.legend(facecolor=P["card"], edgecolor=P["border"], labelcolor="#94a3b8", fontsize=8, loc="upper right")
+    fig.autofmt_xdate(rotation=20)
+    fig.tight_layout()
+    st.pyplot(fig)
+    plt.close()
+
+    # Detailed visit cards
+    st.markdown('<div style="margin-top:1.1rem">', unsafe_allow_html=True)
+    active_df = hist_df if sel_filter.startswith("All Patients") else hist_df[hist_df["name"] == sel_filter]
+    for entry in reversed(active_df.tail(15).to_dict("records")):
+        score_color = "#fb7185" if entry["prediction"] == "High Risk" else "#34d399"
+        st.markdown(f"""<div class="history-entry">
+          <div>
+            <div class="history-name">{entry['name']} <span style="font-size:0.75rem;font-weight:400;color:var(--t3)">({entry['prediction']})</span></div>
+            <div class="history-date">📅 {entry['date']}  ·  Engine: {entry['model']}</div>
+          </div>
+          <div class="history-score" style="color:{score_color}">{entry['probability']}%</div>
+        </div>""", unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # Clear history button
+    c_clear1, _ = st.columns([0.3, 0.7])
+    with c_clear1:
+        if st.button("🗑️  Clear Risk History", key="clear_history_btn"):
+            save_risk_history([])
+            st.rerun()
 
 # ── HOSPITAL REPORT (PDF / IMAGE) EXTRACTION ─────────────
 def extract_text_from_file(uploaded_file):
@@ -1302,7 +1796,7 @@ elif "Risk" in page:
               "🟠  Extra Trees  ·  Accuracy 86.4%":et,
               "🩵  K-Nearest Neighbors  ·  Accuracy 89.1%":knn}[mdl_choice]
 
-    input_mode = st.radio("Input method", ["✍️  Manual Entry", "📁  Upload CSV (Batch)", "📄  Upload Report (PDF/Image)"], horizontal=True)
+    input_mode = st.radio("Input method", ["✍️  Manual Entry", "📁  Upload CSV (Batch)", "📄  Upload Report (PDF/Image)", "📈  Risk History Tracker"], horizontal=True)
 
     st.markdown("<div style='height:0.5rem'></div>",unsafe_allow_html=True)
 
@@ -1372,6 +1866,56 @@ elif "Risk" in page:
                 pred=sel_mdl.predict(enc)[0]
                 prob=sel_mdl.predict_proba(enc)[0][1]
                 render_prediction_result(pred, prob)
+
+                # Store patient values for PDF and history
+                patient_vals = {
+                    "Age": age, "Sex": sex_val,
+                    "Chest Pain Type": cp_val,
+                    "Resting BP (mm Hg)": trestbps,
+                    "Cholesterol (mg/dl)": chol,
+                    "Fasting Blood Sugar >120": "Yes" if fbs_val else "No",
+                    "Resting ECG": ecg_val,
+                    "Max Heart Rate": thalach,
+                    "Exercise Angina": exang_val,
+                    "Oldpeak (ST Depression)": oldpeak,
+                    "ST Slope": slope_val,
+                }
+                model_name = mdl_choice.split("·")[0].strip().replace("🟣","").replace("🔴","").replace("🟢","").replace("🔵","").replace("🟠","").replace("🩵","").strip()
+
+                # ── SHAP Explanation ──
+                shap_names, shap_values = None, None
+                if SHAP_OK:
+                    explainer = get_shap_explainer(sel_mdl, Xtr)
+                    shap_names, shap_values = compute_shap_values(explainer, enc)
+                    render_shap_explanation(shap_names, shap_values)
+
+                # ── Patient ID & Clinical Actions ──
+                st.markdown('<div style="margin-top:1.2rem;padding:1.1rem;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:14px;">', unsafe_allow_html=True)
+                st.markdown('<div style="font-size:0.85rem;font-weight:700;color:#fff;margin-bottom:0.5rem;">📄 Clinical Export & Tracking</div>', unsafe_allow_html=True)
+                save_name = st.text_input("Patient Name / ID", value="Patient #1", key="save_name_manual")
+                btn_c1, btn_c2 = st.columns(2)
+
+                with btn_c1:
+                    if FPDF_OK:
+                        pdf_bytes = generate_pdf_report(patient_vals, pred, prob, model_name, shap_names, shap_values, patient_name=save_name.strip() or "Patient #1")
+                        if pdf_bytes:
+                            clean_fn = re.sub(r'[^\w\-_\. ]', '_', save_name.strip() or "Patient")
+                            st.download_button(
+                                "📥  Download PDF Report",
+                                data=pdf_bytes,
+                                file_name=f"HeartSense_Report_{clean_fn}_{datetime.now().strftime('%Y%m%d')}.pdf",
+                                mime="application/pdf",
+                                use_container_width=True,
+                            )
+
+                with btn_c2:
+                    if st.button("💾  Save to Risk History", key="save_history_manual", use_container_width=True):
+                        if save_name.strip():
+                            add_risk_entry(save_name.strip(), prob, pred, model_name, patient_vals)
+                            st.success(f"✅ Saved visit for **{save_name.strip()}** to history!")
+                        else:
+                            st.warning("Please enter a patient name to save.")
+                st.markdown('</div>', unsafe_allow_html=True)
             else:
                 st.markdown("""<div class="idle-state">
                   <div class="idle-icon">🫀</div>
@@ -1380,6 +1924,10 @@ elif "Risk" in page:
                     <strong style="color:rgba(255,255,255,0.4)">Analyse patient risk</strong>
                   </div>
                 </div>""",unsafe_allow_html=True)
+
+        # ── Risk History Section (always visible in Manual mode) ──
+        st.markdown("<div style='height:1.5rem'></div>", unsafe_allow_html=True)
+        render_risk_history_chart()
 
         st.markdown('<div class="warn">⚠️ For educational purposes only — not a substitute for professional medical diagnosis.</div>',unsafe_allow_html=True)
 
@@ -1456,7 +2004,7 @@ elif "Risk" in page:
 
         st.markdown('<div class="warn">⚠️ For educational purposes only — not a substitute for professional medical diagnosis.</div>',unsafe_allow_html=True)
 
-    else:
+    elif "Report" in input_mode:
         # ══════════════════════════════════════════════════
         # HOSPITAL REPORT UPLOAD MODE (PDF / IMAGE)
         # ══════════════════════════════════════════════════
@@ -1520,38 +2068,44 @@ elif "Risk" in page:
                         val,_ = extracted.get(field,(None,None))
                         return val if val is not None else default
 
+                    # Scope every widget key to THIS file so a new upload always
+                    # shows its own freshly-extracted values instead of reusing
+                    # whatever was left in session_state from a previous report.
+                    import hashlib
+                    fk = hashlib.md5(file_key.encode()).hexdigest()[:10]
+
                     ra,rb,rc = st.columns([1,1,0.9], gap="large")
                     with ra:
                         st.markdown('<div class="ig"><span class="ig-icon">🧑</span>Demographics &amp; symptoms</div>',unsafe_allow_html=True)
-                        r_age = st.slider("Age",20,80,int(ev("Age",55)),key="r_age")
+                        r_age = st.slider("Age",20,80,int(ev("Age",55)),key=f"r_age_{fk}")
                         r_sex_default = 1 if ev("Sex","F")=="M" else 0
-                        r_sex = st.selectbox("Sex",["Female (F)","Male (M)"],index=r_sex_default,key="r_sex")
+                        r_sex = st.selectbox("Sex",["Female (F)","Male (M)"],index=r_sex_default,key=f"r_sex_{fk}")
                         cp_map = {"ASY":0,"ATA":1,"NAP":2,"TA":3}
                         cp_opts = ["ASY - Asymptomatic (most common high risk)","ATA - Atypical Angina",
                                    "NAP - Non-Anginal Pain","TA - Typical Angina"]
                         r_cp = st.selectbox("Chest pain type", cp_opts,
-                                             index=cp_map.get(ev("ChestPainType","ASY"),0), key="r_cp")
-                        r_trestbps = st.slider("Resting blood pressure (mm Hg)",80,200,int(ev("RestingBP",130)),key="r_bp")
-                        r_chol = st.slider("Cholesterol (mg/dl)",100,600,int(ev("Cholesterol",200)),key="r_chol")
+                                             index=cp_map.get(ev("ChestPainType","ASY"),0), key=f"r_cp_{fk}")
+                        r_trestbps = st.slider("Resting blood pressure (mm Hg)",80,200,int(ev("RestingBP",130)),key=f"r_bp_{fk}")
+                        r_chol = st.slider("Cholesterol (mg/dl)",100,600,int(ev("Cholesterol",200)),key=f"r_chol_{fk}")
                         r_fbs = st.selectbox("Fasting blood sugar > 120 mg/dl",["No (0)","Yes (1)"],
-                                              index=int(ev("FastingBS",0)),key="r_fbs")
+                                              index=int(ev("FastingBS",0)),key=f"r_fbs_{fk}")
                     with rb:
                         st.markdown('<div class="ig"><span class="ig-icon">🩺</span>Cardiac measurements</div>',unsafe_allow_html=True)
                         ecg_map = {"Normal":0,"LVH":1,"ST":2}
                         r_restecg = st.selectbox("Resting ECG",
                             ["Normal","LVH - Left Ventricular Hypertrophy","ST - ST-T Wave Abnormality"],
-                            index=ecg_map.get(ev("RestingECG","Normal"),0),key="r_ecg")
-                        r_thalach = st.slider("Max heart rate achieved",60,202,int(ev("MaxHR",140)),key="r_hr")
+                            index=ecg_map.get(ev("RestingECG","Normal"),0),key=f"r_ecg_{fk}")
+                        r_thalach = st.slider("Max heart rate achieved",60,202,int(ev("MaxHR",140)),key=f"r_hr_{fk}")
                         ang_default = 1 if ev("ExerciseAngina","N")=="Y" else 0
-                        r_exang = st.selectbox("Exercise induced angina",["No (N)","Yes (Y)"],index=ang_default,key="r_ang")
-                        r_oldpeak = st.slider("Oldpeak (ST depression)",-2.6,6.2,float(ev("Oldpeak",0.0)),0.1,key="r_op")
+                        r_exang = st.selectbox("Exercise induced angina",["No (N)","Yes (Y)"],index=ang_default,key=f"r_ang_{fk}")
+                        r_oldpeak = st.slider("Oldpeak (ST depression)",-2.6,6.2,float(ev("Oldpeak",0.0)),0.1,key=f"r_op_{fk}")
                         slope_map = {"Up":0,"Flat":1,"Down":2}
                         r_slope = st.selectbox("ST slope",["Up - Upsloping","Flat","Down - Downsloping"],
-                                                index=slope_map.get(ev("ST_Slope","Flat"),1),key="r_slope")
+                                                index=slope_map.get(ev("ST_Slope","Flat"),1),key=f"r_slope_{fk}")
 
                     with rc:
                         st.markdown('<div class="ig" style="margin-top:0"><span class="ig-icon">🔮</span>Result</div>',unsafe_allow_html=True)
-                        r_btn = st.button("🔮  Analyse patient risk", key="r_predict_btn")
+                        r_btn = st.button("🔮  Analyse patient risk", key=f"r_predict_btn_{fk}")
 
                         if r_btn:
                             sex_val   = "M" if "Male" in r_sex else "F"
@@ -1578,6 +2132,57 @@ elif "Risk" in page:
                             pred=sel_mdl.predict(enc)[0]
                             prob=sel_mdl.predict_proba(enc)[0][1]
                             render_prediction_result(pred, prob)
+
+                            # Store patient values for PDF and history
+                            patient_vals = {
+                                "Age": r_age, "Sex": sex_val,
+                                "Chest Pain Type": cp_val,
+                                "Resting BP (mm Hg)": r_trestbps,
+                                "Cholesterol (mg/dl)": r_chol,
+                                "Fasting Blood Sugar >120": "Yes" if fbs_val else "No",
+                                "Resting ECG": ecg_val,
+                                "Max Heart Rate": r_thalach,
+                                "Exercise Angina": exang_val,
+                                "Oldpeak (ST Depression)": r_oldpeak,
+                                "ST Slope": slope_val,
+                            }
+                            model_name = mdl_choice.split("·")[0].strip().replace("🟣","").replace("🔴","").replace("🟢","").replace("🔵","").replace("🟠","").replace("🩵","").strip()
+
+                            # ── SHAP Explanation ──
+                            shap_names, shap_values = None, None
+                            if SHAP_OK:
+                                explainer = get_shap_explainer(sel_mdl, Xtr)
+                                shap_names, shap_values = compute_shap_values(explainer, enc)
+                                render_shap_explanation(shap_names, shap_values)
+
+                            # ── Patient ID & Clinical Actions ──
+                            st.markdown('<div style="margin-top:1.2rem;padding:1.1rem;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:14px;">', unsafe_allow_html=True)
+                            st.markdown('<div style="font-size:0.85rem;font-weight:700;color:#fff;margin-bottom:0.5rem;">📄 Clinical Export & Tracking</div>', unsafe_allow_html=True)
+                            save_name = st.text_input("Patient Name / ID", value="Patient #1", key=f"save_name_{fk}")
+                            btn_c1, btn_c2 = st.columns(2)
+
+                            with btn_c1:
+                                if FPDF_OK:
+                                    pdf_bytes = generate_pdf_report(patient_vals, pred, prob, model_name, shap_names, shap_values, patient_name=save_name.strip() or "Patient #1")
+                                    if pdf_bytes:
+                                        clean_fn = re.sub(r'[^\w\-_\. ]', '_', save_name.strip() or "Patient")
+                                        st.download_button(
+                                            "📥  Download PDF Report",
+                                            data=pdf_bytes,
+                                            file_name=f"HeartSense_Report_{clean_fn}_{datetime.now().strftime('%Y%m%d')}.pdf",
+                                            mime="application/pdf",
+                                            use_container_width=True,
+                                            key=f"pdf_dl_{fk}",
+                                        )
+
+                            with btn_c2:
+                                if st.button("💾  Save to Risk History", key=f"save_history_{fk}", use_container_width=True):
+                                    if save_name.strip():
+                                        add_risk_entry(save_name.strip(), prob, pred, model_name, patient_vals)
+                                        st.success(f"✅ Saved visit for **{save_name.strip()}** to history!")
+                                    else:
+                                        st.warning("Please enter a patient name to save.")
+                            st.markdown('</div>', unsafe_allow_html=True)
                         else:
                             st.markdown("""<div class="idle-state">
                               <div class="idle-icon">🫀</div>
@@ -1594,4 +2199,15 @@ elif "Risk" in page:
                   </div>
                 </div>""",unsafe_allow_html=True)
 
+        # ── Risk History Section in Report Mode ──
+        st.markdown("<div style='height:1.5rem'></div>", unsafe_allow_html=True)
+        render_risk_history_chart()
+
         st.markdown('<div class="warn">⚠️ For educational purposes only — not a substitute for professional medical diagnosis. Always verify auto-extracted values before use.</div>',unsafe_allow_html=True)
+
+    elif "History" in input_mode:
+        # ══════════════════════════════════════════════════
+        # DEDICATED RISK HISTORY TRACKER VIEW
+        # ══════════════════════════════════════════════════
+        render_risk_history_chart()
+        st.markdown('<div class="warn">⚠️ For educational purposes only — not a substitute for professional medical diagnosis.</div>',unsafe_allow_html=True)

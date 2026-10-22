@@ -1,6 +1,4 @@
-# ============================================================
 # Step 5: Logistic Regression (Baseline)
-# ============================================================
 import pandas as pd, numpy as np, pickle, matplotlib.pyplot as plt, seaborn as sns
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (accuracy_score, precision_score, recall_score,

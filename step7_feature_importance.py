@@ -1,6 +1,4 @@
-# ============================================================
 # Step 7: Feature Importance
-# ============================================================
 import pandas as pd, numpy as np, matplotlib.pyplot as plt, pickle
 
 X_train=pd.read_csv("data/X_train.csv")

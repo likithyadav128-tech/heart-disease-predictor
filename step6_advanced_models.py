@@ -1,7 +1,5 @@
-# ============================================================
 # Step 6: Advanced Models — GB, Extra Trees, KNN & Tuned
 #          Weighted Voting Ensemble (Best Accuracy, Compact)
-# ============================================================
 import pandas as pd, numpy as np, pickle, matplotlib.pyplot as plt, seaborn as sns
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, ExtraTreesClassifier, VotingClassifier
 from sklearn.linear_model import LogisticRegression

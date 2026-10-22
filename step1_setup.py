@@ -1,7 +1,5 @@
-# ============================================================
 # HEART DISEASE RISK PREDICTION - NEW DATASET
 # Step 1: Setup & Dataset Overview
-# ============================================================
 import pandas as pd
 import numpy as np
 import os
