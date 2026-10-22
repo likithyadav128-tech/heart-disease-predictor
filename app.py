@@ -1227,17 +1227,21 @@ def generate_pdf_report(patient_vals, pred, prob, model_name, feat_names=None, s
 HISTORY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "risk_history.json")
 
 def load_risk_history():
-    """Load risk history from JSON file."""
-    if os.path.exists(HISTORY_FILE):
-        try:
-            with open(HISTORY_FILE, "r") as f:
-                return json.load(f)
-        except Exception:
-            return []
-    return []
+    """Load risk history from session state and sync with local JSON file."""
+    if "risk_history" not in st.session_state:
+        loaded = []
+        if os.path.exists(HISTORY_FILE):
+            try:
+                with open(HISTORY_FILE, "r") as f:
+                    loaded = json.load(f)
+            except Exception:
+                loaded = []
+        st.session_state["risk_history"] = loaded
+    return st.session_state["risk_history"]
 
 def save_risk_history(history):
-    """Save risk history to JSON file."""
+    """Save risk history to session state and sync to local JSON file."""
+    st.session_state["risk_history"] = list(history)
     try:
         with open(HISTORY_FILE, "w") as f:
             json.dump(history, f, indent=2)
@@ -1246,13 +1250,13 @@ def save_risk_history(history):
 
 def add_risk_entry(name, prob, pred, model_name, patient_vals):
     """Add a new entry to risk history."""
-    history = load_risk_history()
+    history = list(load_risk_history())
     entry = {
-        "name": name,
+        "name": str(name).strip(),
         "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
-        "probability": round(prob * 100, 1),
-        "prediction": "High Risk" if pred == 1 else "Low Risk",
-        "model": model_name,
+        "probability": round(float(prob) * 100, 1),
+        "prediction": "High Risk" if int(pred) == 1 else "Low Risk",
+        "model": str(model_name).strip(),
         "patient_vals": patient_vals,
     }
     history.append(entry)
@@ -1314,6 +1318,11 @@ def render_risk_history_chart():
     fig, ax = dark_fig(8.5, 3.8)
     colors_cycle = ["#e11d48", "#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#06b6d4", "#ec4899", "#14b8a6"]
 
+    min_d = hist_df["date_parsed"].min()
+    max_d = hist_df["date_parsed"].max()
+    if min_d == max_d:
+        ax.set_xlim(min_d - pd.Timedelta(hours=12), max_d + pd.Timedelta(hours=12))
+
     if sel_filter and not sel_filter.startswith("All Patients"):
         plot_names = [sel_filter]
     else:
@@ -1322,8 +1331,12 @@ def render_risk_history_chart():
     for i, pname in enumerate(plot_names):
         subset = hist_df[hist_df["name"] == pname].sort_values("date_parsed")
         c = colors_cycle[i % len(colors_cycle)]
-        ax.plot(subset["date_parsed"], subset["probability"], "o-", color=c,
-                label=pname, lw=2.8, markersize=8, markeredgecolor="#fff", markeredgewidth=1.2)
+        if len(subset) == 1:
+            ax.plot(subset["date_parsed"], subset["probability"], "o", color=c,
+                    label=pname, markersize=10, markeredgecolor="#fff", markeredgewidth=1.6)
+        else:
+            ax.plot(subset["date_parsed"], subset["probability"], "o-", color=c,
+                    label=pname, lw=2.8, markersize=8, markeredgecolor="#fff", markeredgewidth=1.2)
         for _, row in subset.iterrows():
             ax.annotate(f"{row['probability']:.0f}%", (row["date_parsed"], row["probability"]),
                         textcoords="offset points", xytext=(0, 9), ha="center",
@@ -1826,7 +1839,7 @@ elif "Risk" in page:
 
         with cc:
             st.markdown('<div class="ig" style="margin-top:0"><span class="ig-icon">🔮</span>Result</div>',unsafe_allow_html=True)
-            btn=st.button("🔮  Analyse patient risk")
+            btn=st.button("🔮  Analyse patient risk", use_container_width=True)
 
             if btn:
                 # Parse inputs → match exact training column names
@@ -1863,9 +1876,8 @@ elif "Risk" in page:
                 num_cols = ["Age","RestingBP","Cholesterol","FastingBS","MaxHR","Oldpeak"]
                 enc[num_cols] = scaler.transform(enc[num_cols])
 
-                pred=sel_mdl.predict(enc)[0]
-                prob=sel_mdl.predict_proba(enc)[0][1]
-                render_prediction_result(pred, prob)
+                pred=int(sel_mdl.predict(enc)[0])
+                prob=float(sel_mdl.predict_proba(enc)[0][1])
 
                 # Store patient values for PDF and history
                 patient_vals = {
@@ -1887,7 +1899,18 @@ elif "Risk" in page:
                 if SHAP_OK:
                     explainer = get_shap_explainer(sel_mdl, Xtr)
                     shap_names, shap_values = compute_shap_values(explainer, enc)
-                    render_shap_explanation(shap_names, shap_values)
+
+                st.session_state["manual_pred_data"] = {
+                    "pred": pred, "prob": prob, "patient_vals": patient_vals,
+                    "model_name": model_name, "shap_names": shap_names, "shap_values": shap_values
+                }
+
+            if "manual_pred_data" in st.session_state:
+                mp = st.session_state["manual_pred_data"]
+                render_prediction_result(mp["pred"], mp["prob"])
+
+                if SHAP_OK and mp.get("shap_names"):
+                    render_shap_explanation(mp["shap_names"], mp["shap_values"])
 
                 # ── Patient ID & Clinical Actions ──
                 st.markdown('<div style="margin-top:1.2rem;padding:1.1rem;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:14px;">', unsafe_allow_html=True)
@@ -1897,7 +1920,7 @@ elif "Risk" in page:
 
                 with btn_c1:
                     if FPDF_OK:
-                        pdf_bytes = generate_pdf_report(patient_vals, pred, prob, model_name, shap_names, shap_values, patient_name=save_name.strip() or "Patient #1")
+                        pdf_bytes = generate_pdf_report(mp["patient_vals"], mp["pred"], mp["prob"], mp["model_name"], mp["shap_names"], mp["shap_values"], patient_name=save_name.strip() or "Patient #1")
                         if pdf_bytes:
                             clean_fn = re.sub(r'[^\w\-_\. ]', '_', save_name.strip() or "Patient")
                             st.download_button(
@@ -1911,8 +1934,9 @@ elif "Risk" in page:
                 with btn_c2:
                     if st.button("💾  Save to Risk History", key="save_history_manual", use_container_width=True):
                         if save_name.strip():
-                            add_risk_entry(save_name.strip(), prob, pred, model_name, patient_vals)
+                            add_risk_entry(save_name.strip(), mp["prob"], mp["pred"], mp["model_name"], mp["patient_vals"])
                             st.success(f"✅ Saved visit for **{save_name.strip()}** to history!")
+                            st.rerun()
                         else:
                             st.warning("Please enter a patient name to save.")
                 st.markdown('</div>', unsafe_allow_html=True)
@@ -2105,7 +2129,7 @@ elif "Risk" in page:
 
                     with rc:
                         st.markdown('<div class="ig" style="margin-top:0"><span class="ig-icon">🔮</span>Result</div>',unsafe_allow_html=True)
-                        r_btn = st.button("🔮  Analyse patient risk", key=f"r_predict_btn_{fk}")
+                        r_btn = st.button("🔮  Analyse patient risk", key=f"r_predict_btn_{fk}", use_container_width=True)
 
                         if r_btn:
                             sex_val   = "M" if "Male" in r_sex else "F"
@@ -2129,9 +2153,8 @@ elif "Risk" in page:
                             num_cols = ["Age","RestingBP","Cholesterol","FastingBS","MaxHR","Oldpeak"]
                             enc[num_cols] = scaler.transform(enc[num_cols])
 
-                            pred=sel_mdl.predict(enc)[0]
-                            prob=sel_mdl.predict_proba(enc)[0][1]
-                            render_prediction_result(pred, prob)
+                            pred=int(sel_mdl.predict(enc)[0])
+                            prob=float(sel_mdl.predict_proba(enc)[0][1])
 
                             # Store patient values for PDF and history
                             patient_vals = {
@@ -2153,7 +2176,18 @@ elif "Risk" in page:
                             if SHAP_OK:
                                 explainer = get_shap_explainer(sel_mdl, Xtr)
                                 shap_names, shap_values = compute_shap_values(explainer, enc)
-                                render_shap_explanation(shap_names, shap_values)
+
+                            st.session_state[f"report_pred_data_{fk}"] = {
+                                "pred": pred, "prob": prob, "patient_vals": patient_vals,
+                                "model_name": model_name, "shap_names": shap_names, "shap_values": shap_values
+                            }
+
+                        if f"report_pred_data_{fk}" in st.session_state:
+                            rp_data = st.session_state[f"report_pred_data_{fk}"]
+                            render_prediction_result(rp_data["pred"], rp_data["prob"])
+
+                            if SHAP_OK and rp_data.get("shap_names"):
+                                render_shap_explanation(rp_data["shap_names"], rp_data["shap_values"])
 
                             # ── Patient ID & Clinical Actions ──
                             st.markdown('<div style="margin-top:1.2rem;padding:1.1rem;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:14px;">', unsafe_allow_html=True)
@@ -2163,7 +2197,7 @@ elif "Risk" in page:
 
                             with btn_c1:
                                 if FPDF_OK:
-                                    pdf_bytes = generate_pdf_report(patient_vals, pred, prob, model_name, shap_names, shap_values, patient_name=save_name.strip() or "Patient #1")
+                                    pdf_bytes = generate_pdf_report(rp_data["patient_vals"], rp_data["pred"], rp_data["prob"], rp_data["model_name"], rp_data["shap_names"], rp_data["shap_values"], patient_name=save_name.strip() or "Patient #1")
                                     if pdf_bytes:
                                         clean_fn = re.sub(r'[^\w\-_\. ]', '_', save_name.strip() or "Patient")
                                         st.download_button(
@@ -2178,8 +2212,9 @@ elif "Risk" in page:
                             with btn_c2:
                                 if st.button("💾  Save to Risk History", key=f"save_history_{fk}", use_container_width=True):
                                     if save_name.strip():
-                                        add_risk_entry(save_name.strip(), prob, pred, model_name, patient_vals)
+                                        add_risk_entry(save_name.strip(), rp_data["prob"], rp_data["pred"], rp_data["model_name"], rp_data["patient_vals"])
                                         st.success(f"✅ Saved visit for **{save_name.strip()}** to history!")
+                                        st.rerun()
                                     else:
                                         st.warning("Please enter a patient name to save.")
                             st.markdown('</div>', unsafe_allow_html=True)
