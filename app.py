@@ -1342,8 +1342,8 @@ def render_risk_history_chart():
                         textcoords="offset points", xytext=(0, 9), ha="center",
                         fontsize=7.5, color=c, fontweight="bold")
 
-    ax.axhline(y=50, color="rgba(255,255,255,0.2)", ls="--", lw=1.2)
-    ax.text(ax.get_xlim()[0], 52, " 50% Clinical Risk Threshold", va="bottom", color=P["t3"], fontsize=7.5, fontweight="600")
+    ax.axhline(y=50, color="#ffffff", alpha=0.25, ls="--", lw=1.2)
+    ax.text(0.02, 53, " 50% Clinical Risk Threshold", transform=ax.get_yaxis_transform(), color="#94a3b8", fontsize=7.5, fontweight="600")
     ax.set_ylim(-5, 105)
     ax.set_ylabel("Risk Probability %", color=P["t2"], fontsize=8.5)
     ax.set_title("Longitudinal Patient Risk Trend", color="#e2e8f0", fontsize=11, fontweight="700", pad=12)
